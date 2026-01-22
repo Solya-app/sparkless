@@ -91,6 +91,9 @@ class SQLParser:
             "DESCRIBE",
             "EXPLAIN",
             "REFRESH",
+            "RESTORE",
+            "VERSION",
+            "TIMESTAMP",
             "WITH",
             "UNION",
             "INTERSECT",
@@ -319,6 +322,8 @@ class SQLParser:
             return "USE"
         elif query_upper.startswith("VACUUM"):
             return "VACUUM"
+        elif query_upper.startswith("RESTORE"):
+            return "RESTORE"
         else:
             return "UNKNOWN"
 
