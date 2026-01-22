@@ -4,9 +4,12 @@ Memory storage backend.
 This module provides an in-memory storage implementation.
 """
 
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
-from ...core.interfaces.storage import IStorageManager, ITable
+
 from sparkless.spark_types import StructType, StructField
+
+from ...core.interfaces.storage import IStorageManager, ITable
 
 
 class MemoryTable(ITable):
@@ -177,6 +180,8 @@ class MemoryStorageManager(IStorageManager):
         self.schemas: Dict[str, MemorySchema] = {}
         # Create default schema
         self.schemas["default"] = MemorySchema("default")
+        # Lock tracking for concurrency control
+        self._locks: Dict[str, Dict[str, Any]] = {}
 
     def create_schema(self, schema: str) -> None:
         """Create a new schema.
@@ -421,6 +426,128 @@ class MemoryStorageManager(IStorageManager):
         ):
             table_obj = self.schemas[schema_name].tables[table_name]
             table_obj._metadata.update(metadata_updates)
+
+    # ========== Lock Management Methods ==========
+
+    def acquire_lock(
+        self,
+        lock_id: str,
+        owner: str,
+        timeout_seconds: int = 3600,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Acquire a processing lock.
+
+        Args:
+            lock_id: Unique identifier for the lock.
+            owner: Owner of the lock (e.g., task_id, worker_id).
+            timeout_seconds: Lock timeout in seconds (default 1 hour).
+            metadata: Optional metadata to store with the lock.
+
+        Returns:
+            True if lock was acquired, False if already held by another owner.
+        """
+        now = datetime.now()
+
+        # Check if lock exists and is still valid
+        if lock_id in self._locks:
+            existing = self._locks[lock_id]
+            expires_at = existing["acquired_at"] + timedelta(
+                seconds=existing["timeout_seconds"]
+            )
+
+            # Lock still held by another owner
+            if expires_at > now and existing["owner"] != owner:
+                return False
+
+            # Lock expired or same owner - can re-acquire
+
+        self._locks[lock_id] = {
+            "owner": owner,
+            "acquired_at": now,
+            "timeout_seconds": timeout_seconds,
+            "metadata": metadata or {},
+        }
+        return True
+
+    def release_lock(self, lock_id: str, owner: str) -> bool:
+        """Release a processing lock.
+
+        Args:
+            lock_id: Lock identifier.
+            owner: Owner trying to release (must match lock owner).
+
+        Returns:
+            True if lock was released, False if not found or wrong owner.
+        """
+        if lock_id not in self._locks:
+            return False
+
+        if self._locks[lock_id]["owner"] != owner:
+            return False
+
+        del self._locks[lock_id]
+        return True
+
+    def get_lock_info(self, lock_id: str) -> Optional[Dict[str, Any]]:
+        """Get information about a lock.
+
+        Args:
+            lock_id: Lock identifier.
+
+        Returns:
+            Lock information dict or None if not found.
+        """
+        return self._locks.get(lock_id)
+
+    def is_lock_held(self, lock_id: str) -> bool:
+        """Check if a lock is currently held (not expired).
+
+        Args:
+            lock_id: Lock identifier.
+
+        Returns:
+            True if lock is held and not expired, False otherwise.
+        """
+        if lock_id not in self._locks:
+            return False
+
+        lock = self._locks[lock_id]
+        expires_at = lock["acquired_at"] + timedelta(seconds=lock["timeout_seconds"])
+        return datetime.now() < expires_at
+
+    def list_locks(self) -> Dict[str, Dict[str, Any]]:
+        """List all locks (including expired ones).
+
+        Returns:
+            Dictionary of lock_id to lock information.
+        """
+        return dict(self._locks)
+
+    def cleanup_expired_locks(self) -> int:
+        """Remove expired locks.
+
+        Returns:
+            Count of removed locks.
+        """
+        now = datetime.now()
+        expired = []
+
+        for lock_id, lock in self._locks.items():
+            expires_at = lock["acquired_at"] + timedelta(
+                seconds=lock["timeout_seconds"]
+            )
+            if now >= expires_at:
+                expired.append(lock_id)
+
+        for lock_id in expired:
+            del self._locks[lock_id]
+
+        return len(expired)
+
+    def reset_locks(self) -> None:
+        """Reset all locks (useful for tests)."""
+        self._locks.clear()
 
     def close(self) -> None:
         """Close storage backend and clean up resources.
