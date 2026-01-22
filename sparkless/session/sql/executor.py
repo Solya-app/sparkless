@@ -145,6 +145,8 @@ class SQLExecutor:
                 return self._execute_use(ast)
             elif ast.query_type == "ALTER":
                 return self._execute_alter(ast)
+            elif ast.query_type == "VACUUM":
+                return self._execute_vacuum(ast)
             else:
                 raise QueryExecutionException(
                     f"Unsupported query type: {ast.query_type}"
@@ -2145,6 +2147,7 @@ class SQLExecutor:
 
         return cast("IDataFrame", DataFrame([], StructType([])))
 
+<<<<<<< HEAD
     def _execute_alter(self, ast: SQLAST) -> IDataFrame:
         """Execute ALTER TABLE query.
 
@@ -2161,11 +2164,19 @@ class SQLExecutor:
         For sparkless, most ALTER operations are no-ops but we validate
         that the table exists. Schema modifications are not persisted
         since sparkless is designed for testing purposes.
+=======
+    def _execute_vacuum(self, ast: SQLAST) -> IDataFrame:
+        """Execute VACUUM query for Delta tables.
+
+        Syntax:
+            VACUUM table_name [RETAIN n HOURS] [DRY RUN]
+>>>>>>> ba13ca7 (feat(sql): add VACUUM SQL command support)
 
         Args:
             ast: Parsed SQL AST.
 
         Returns:
+<<<<<<< HEAD
             Empty DataFrame indicating success.
 
         Raises:
@@ -2179,10 +2190,42 @@ class SQLExecutor:
         schema_name = components.get("schema_name")
 
         # Access storage through catalog
+=======
+            DataFrame with deleted files (for DRY RUN) or empty (for actual vacuum).
+
+        Raises:
+            AnalysisException: If table does not exist or is not a Delta table.
+        """
+        from ...errors import AnalysisException
+        from ...spark_types import StructType, StructField, StringType
+
+        # Get original query string for parsing
+        original_query = ast.components.get("original_query", "")
+        if not original_query and hasattr(ast, "query"):
+            original_query = ast.query
+
+        query_upper = original_query.upper() if original_query else ""
+
+        # Parse table name: VACUUM table_name
+        match = re.search(r"VACUUM\s+(\w+(?:\.\w+)?)", original_query, re.IGNORECASE)
+        if not match:
+            raise AnalysisException("VACUUM requires a table name")
+
+        table_name = match.group(1)
+
+        # Parse schema and table
+        if "." in table_name:
+            schema_name, table_only = table_name.split(".", 1)
+        else:
+            schema_name, table_only = "default", table_name
+
+        # Get table metadata
+>>>>>>> ba13ca7 (feat(sql): add VACUUM SQL command support)
         storage = getattr(self.session, "_storage", None)
         if storage is None:
             storage = self.session.catalog.get_storage_backend()
 
+<<<<<<< HEAD
         if schema_name is None:
             schema_name = storage.get_current_schema()
 
@@ -2209,6 +2252,42 @@ class SQLExecutor:
 
         # Return empty DataFrame to indicate success
         return cast("IDataFrame", DataFrame([], StructType([])))
+=======
+        if not storage.table_exists(schema_name, table_only):
+            raise AnalysisException(f"Table {table_name} does not exist")
+
+        meta = storage.get_table_metadata(schema_name, table_only)
+
+        if not meta or meta.get("format") != "delta":
+            raise AnalysisException(
+                f"Table {table_name} is not a Delta table. "
+                "VACUUM can only be used with Delta format tables."
+            )
+
+        # Parse RETAIN n HOURS (optional) - validated but not used in mock
+        # In real Delta Lake, this would control retention period
+        re.search(r"RETAIN\s+(\d+)\s+HOURS?", original_query, re.IGNORECASE)
+
+        # Check for DRY RUN
+        is_dry_run = "DRY RUN" in query_upper or "DRY_RUN" in query_upper
+
+        # For sparkless, VACUUM is a no-op since we don't have real Delta files
+        # In DRY RUN mode, return mock list of files that would be deleted
+        # In normal mode, return empty DataFrame
+
+        if is_dry_run:
+            # Return mock list of files
+            mock_files = [
+                {
+                    "path": f"/mock/delta/{table_name.replace('.', '/')}/part-00000.parquet"
+                },
+            ]
+            vacuum_schema = StructType([StructField("path", StringType())])
+            return cast("IDataFrame", DataFrame(mock_files, vacuum_schema, storage))
+        else:
+            # Return empty DataFrame indicating success
+            return cast("IDataFrame", DataFrame([], StructType([])))
+>>>>>>> ba13ca7 (feat(sql): add VACUUM SQL command support)
 
     def _execute_show(self, ast: SQLAST) -> IDataFrame:
         """Execute SHOW query.
