@@ -4,9 +4,12 @@ Memory storage backend.
 This module provides an in-memory storage implementation.
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
-from ...core.interfaces.storage import IStorageManager, ITable
+
 from sparkless.spark_types import StructType, StructField
+
+from ...core.interfaces.storage import IStorageManager, ITable
 
 
 class MemoryTable(ITable):
@@ -177,6 +180,8 @@ class MemoryStorageManager(IStorageManager):
         self.schemas: Dict[str, MemorySchema] = {}
         # Create default schema
         self.schemas["default"] = MemorySchema("default")
+        # Watermark tracking for incremental processing
+        self._watermarks: Dict[str, Dict[str, Any]] = {}
 
     def create_schema(self, schema: str) -> None:
         """Create a new schema.
@@ -421,6 +426,75 @@ class MemoryStorageManager(IStorageManager):
         ):
             table_obj = self.schemas[schema_name].tables[table_name]
             table_obj._metadata.update(metadata_updates)
+
+    # =========================================================================
+    # Watermark tracking methods
+    # =========================================================================
+
+    def set_watermark(
+        self,
+        task_id: str,
+        watermark_value: Any,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Set watermark for a task.
+
+        Watermarks are used for incremental processing to track the last
+        processed point in time or sequence.
+
+        Args:
+            task_id: Unique identifier for the task/pipeline.
+            watermark_value: The watermark value (timestamp, sequence number, etc.).
+            metadata: Optional metadata associated with the watermark.
+        """
+        self._watermarks[task_id] = {
+            "value": watermark_value,
+            "updated_at": datetime.now(),
+            "metadata": metadata or {},
+        }
+
+    def get_watermark(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Get watermark for a task.
+
+        Args:
+            task_id: Unique identifier for the task/pipeline.
+
+        Returns:
+            Watermark data dictionary with 'value', 'updated_at', and 'metadata',
+            or None if no watermark exists for the task.
+        """
+        return self._watermarks.get(task_id)
+
+    def delete_watermark(self, task_id: str) -> bool:
+        """Delete watermark for a task.
+
+        Args:
+            task_id: Unique identifier for the task/pipeline.
+
+        Returns:
+            True if the watermark was deleted, False if it didn't exist.
+        """
+        if task_id in self._watermarks:
+            del self._watermarks[task_id]
+            return True
+        return False
+
+    def list_watermarks(self) -> Dict[str, Dict[str, Any]]:
+        """List all watermarks.
+
+        Returns:
+            Dictionary mapping task_id to watermark data (deep copy).
+        """
+        import copy
+
+        return copy.deepcopy(self._watermarks)
+
+    def reset_watermarks(self) -> None:
+        """Reset all watermarks.
+
+        This is useful for tests to ensure a clean state.
+        """
+        self._watermarks.clear()
 
     def close(self) -> None:
         """Close storage backend and clean up resources.
