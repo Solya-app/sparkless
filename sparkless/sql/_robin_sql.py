@@ -783,7 +783,8 @@ class RobinDataFrame:
     def collect(self) -> List[Row]:
         """Collect rows, wrapping each dict in Row for PySpark compatibility."""
         raw = self._inner.collect()
-        return [Row(d) for d in raw]
+        schema_struct = self.schema
+        return [Row(d, schema=schema_struct) for d in raw]
 
     def show(self, n: int = 20, truncate: bool = True) -> None:
         """Simple show: print first n rows."""
