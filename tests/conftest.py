@@ -288,8 +288,10 @@ def _robin_skip_set():
 
 
 def pytest_collection_modifyitems(config, items):
-    """When SPARKLESS_TEST_BACKEND=robin, skip tests in robin_skip_list.json."""
+    """When SPARKLESS_TEST_BACKEND=robin, skip tests in robin_skip_list.json (unless ROBIN_RUN_NO_SKIP=1)."""
     if (os.environ.get("SPARKLESS_TEST_BACKEND") or "").strip().lower() != "robin":
+        return
+    if (os.environ.get("ROBIN_RUN_NO_SKIP") or "").strip() in ("1", "true", "yes"):
         return
     skip_set = _robin_skip_set()
     if not skip_set:

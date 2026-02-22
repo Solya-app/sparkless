@@ -31,6 +31,10 @@ See also: [upstream.md](upstream.md), [robin_parity_from_skipped_tests.md](robin
 | collect type conversion | str→i32, str→datetime, f64→i32, string→boolean | test_column_astype, test_issue_432_* | [#649](https://github.com/eddiethedean/robin-sparkless/issues/649), [robin_github_issue_collect_type_conversion.md](robin_github_issue_collect_type_conversion.md) |
 | Describe detail / Delta | DESCRIBE DETAIL, Delta-specific | test_describe_detail_* | [#678](https://github.com/eddiethedean/robin-sparkless/issues/678), [robin_github_issue_describe_detail_delta.md](robin_github_issue_describe_detail_delta.md) |
 | Aggregation result column names | Robin may use different alias for agg columns (e.g. not `avg(Value)`); tests expect PySpark-style names | test_grouped_data_mean_*, test_grouped_data_mean_parity | [#672](https://github.com/eddiethedean/robin-sparkless/issues/672), [robin_github_issue_agg_result_column_names.md](robin_github_issue_agg_result_column_names.md) |
+| when/otherwise invalid series dtype | expected Boolean, got i32/i64/f64/str in when/otherwise | test_casewhen_nested_expressions, test_casewhen_multiple_when_conditions | [#680](https://github.com/eddiethedean/robin-sparkless/issues/680), [robin_github_issue_casewhen_boolean_dtype.md](robin_github_issue_casewhen_boolean_dtype.md) |
+| Join/union type coercion | String vs Int64; schema/assert mismatch | test_pyspark_parity_int64_string_inner, test_column_methods_exist | [#681](https://github.com/eddiethedean/robin-sparkless/issues/681), [robin_github_issue_join_union_type_coercion.md](robin_github_issue_join_union_type_coercion.md) |
+| casewhen bitwise not | dtype Unknown(Any) not supported in 'not' operation | test_casewhen_bitwise_not | [#682](https://github.com/eddiethedean/robin-sparkless/issues/682), [robin_github_issue_casewhen_bitwise_not.md](robin_github_issue_casewhen_bitwise_not.md) |
+| String division | div operation not supported for dtypes str and str | test_string_arithmetic_with_string_column | [#683](https://github.com/eddiethedean/robin-sparkless/issues/683), [robin_github_issue_string_division.md](robin_github_issue_string_division.md) |
 
 ---
 

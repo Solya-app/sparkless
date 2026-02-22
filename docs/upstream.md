@@ -27,6 +27,10 @@ Sparkless v4 depends on **robin-sparkless 0.15.0** (see `Cargo.toml`). **0.15.0*
 - **[#649](https://github.com/eddiethedean/robin-sparkless/issues/649)** — Cast/conversion semantics (str to datetime/i32, f64 to i32, string to boolean).
 - **[#672](https://github.com/eddiethedean/robin-sparkless/issues/672)** — Aggregation result column names (e.g. avg(Value) vs Value); PySpark uses \`avg(Value)\`, Robin may use \`Value\`.
 - **[#678](https://github.com/eddiethedean/robin-sparkless/issues/678)** — DESCRIBE DETAIL (Delta Lake): not supported or different semantics.
+- **[#680](https://github.com/eddiethedean/robin-sparkless/issues/680)** — when/otherwise: invalid series dtype expected Boolean, got i32/i64/f64/str.
+- **[#681](https://github.com/eddiethedean/robin-sparkless/issues/681)** — Join/union type coercion (String vs Int64); assert/schema mismatch.
+- **[#682](https://github.com/eddiethedean/robin-sparkless/issues/682)** — casewhen / bitwise not: dtype Unknown(Any) not supported in 'not' operation.
+- **[#683](https://github.com/eddiethedean/robin-sparkless/issues/683)** — Division between string columns: div operation not supported for dtypes str and str.
 
 ## Robin-Sparkless PySpark parity
 
