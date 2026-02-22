@@ -28,6 +28,7 @@ See also: [upstream.md](upstream.md), [robin_parity_from_skipped_tests.md](robin
 | groupBy + agg (plan) | groupBy with sum/count in plan | test_groupBy_via_plan_interpreter | [robin_github_issue_groupby_agg_plan.md](robin_github_issue_groupby_agg_plan.md) |
 | create_map empty | Empty create_map | [robin_github_issue_create_map_empty.md](robin_github_issue_create_map_empty.md) |
 | Describe detail / Delta | DESCRIBE DETAIL, Delta-specific | test_describe_detail_* | Session/DDL layer |
+| Aggregation result column names | Robin may use different alias for agg columns (e.g. not `avg(Value)`); tests expect PySpark-style names | test_grouped_data_mean_*, test_grouped_data_mean_parity | Skip-list; optional Sparkless normalization if Robin naming is stable |
 
 ---
 
@@ -45,7 +46,9 @@ See also: [upstream.md](upstream.md), [robin_parity_from_skipped_tests.md](robin
 | createDataFrame tuple/pandas | _rows_to_dicts, _value_to_dict_for_crate, _native_value (numpy/pandas), string schema parsing | Done |
 | RobinSparkSession._storage | Property returning None | Done |
 | GroupedData.agg / pivot | Delegate to crate when available | Done (crate-dependent) |
-| GroupedData.count | RobinGroupedData.count() delegates to Rust PyGroupedData.count() | Done |
+| GroupedData.count / avg / sum / min / max | RobinGroupedData.count(), .avg(), .sum(), .min(), .max() delegate to Rust PyGroupedData | Done |
+| is_case_sensitive | _RobinRuntimeConfig.is_case_sensitive() from spark.sql.caseSensitive | Done |
+| F.max / F.min second arg | Optional alias: F.max(col, alias) chains .alias(alias) | Done |
 | F.sum single-arg | _sum_w so Rust sum(col) not given 2 args; accepts *args, uses first only | Done |
 | groupBy list/tuple | groupBy([a,b]) flattens to groupBy(a, b) in _robin_sql | Done |
 | cast(DataType) | _data_type_to_cast_string / typeName() in astype, cast, F.cast; RobinColumn.alias wraps so chained .cast(DataType) works | Done |
@@ -69,10 +72,22 @@ See also: [upstream.md](upstream.md), [robin_parity_from_skipped_tests.md](robin
 | RobinColumn __pow__, __rpow__, __neg__ | Power and unary minus; __rpow__ via exp(log(other)*col) | Done |
 | Column.replace(subset=...) | replace() accepts **kwargs; subset ignored for Column-level | Done |
 | Reader.option() | Store options for read (e.g. CSV header) | Planned / deferred |
+| Active session for agg | get_or_create_session() before PyGroupedData agg/count/avg/sum/min/max so crate has active SparkSession | Done |
 
 ---
 
-## 3. Test → category summary
+## 3. Out of scope (upstream or skip-list)
+
+The following remain in the skip list or as upstream Robin limits; no Sparkless code change beyond documentation:
+
+- **Join on expression**, **crossJoin** – Robin backend limitation; tests in skip list.
+- **row_number, percent_rank, ntile, lag, lead** – Implement in Sparkless only if the crate exposes them; otherwise keep skipped.
+- **DDL** (create_database, drop_table, etc.), **Parquet table append visibility** – Robin/sql feature limits.
+- **String/numeric coercion, isin type handling** – Fix in Sparkless only if translation bug; otherwise document/skip.
+
+---
+
+## 4. Test → category summary
 
 - **Skipped on Robin:** Tests in [tests/robin_skip_list.json](../tests/robin_skip_list.json) are skipped when `SPARKLESS_TEST_BACKEND=robin` so the suite can pass. Each skipped test corresponds to either a **Robin parity gap** (upstream) or a **Sparkless fix** not yet implemented. The skip list is merged from all failed test IDs (upstream + Sparkless limitations) so the Robin suite exits 0.
 - **Categories:** Upstream: create_dataframe_from_rows (array/schema/struct/map), select/Column semantics, table not found, type coercion, case sensitivity, window/expr/struct/udf. Sparkless: join on expression, crossJoin/first not implemented (if crate lacks cross_join), F.desc_nulls_last fallback, Column wrapping.
@@ -80,7 +95,7 @@ See also: [upstream.md](upstream.md), [robin_parity_from_skipped_tests.md](robin
 
 ---
 
-## 4. How to run and regenerate
+## 5. How to run and regenerate
 
 ```bash
 # Run full suite with Robin backend (output to file)

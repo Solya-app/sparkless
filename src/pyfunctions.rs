@@ -536,3 +536,24 @@ pub fn asc_nulls_first(column: &Bound<'_, PyAny>) -> PyResult<PySortOrder> {
     let c = py_any_to_select_expr(column)?;
     Ok(PySortOrder::from_robin(functions::asc_nulls_first(&c)))
 }
+
+/// F.get_item(col, key) - array index (0-based) or map key. PySpark: col[key].
+/// For array: key is int (0-based); uses element_at(col, key+1) for 1-based crate API.
+/// For map: key is str; crate element_at may accept 1-based index only - map lookup by key
+/// may need a different API; for now we support int key only.
+#[pyfunction]
+pub fn get_item(col: &Bound<'_, PyAny>, key: &Bound<'_, PyAny>) -> PyResult<PyColumn> {
+    let c = py_any_to_column(col)?;
+    if let Ok(index_0based) = key.extract::<i64>() {
+        let index_1based = index_0based + 1;
+        Ok(PyColumn::from_robin(functions::element_at(&c, index_1based)))
+    } else if key.extract::<String>().is_ok() {
+        Err(PyValueError::new_err(
+            "get_item with string key (map lookup) is not yet supported by the Robin backend",
+        ))
+    } else {
+        Err(PyValueError::new_err(
+            "get_item key must be int (array index) or str (map key)",
+        ))
+    }
+}

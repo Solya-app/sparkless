@@ -190,8 +190,21 @@ def _robin_functions_module() -> Any:
         count = staticmethod(_wrap1(_r.count))
         avg = staticmethod(_wrap1(_r.avg))
         mean = staticmethod(_wrap1(_r.mean))
-        min_ = staticmethod(_wrap1(_r.min))
-        max_ = staticmethod(_wrap1(_r.max))
+
+        def _min_w(col: Any, *args: Any) -> Any:
+            result = _wrap_col(_r.min(_unwrap(col)))
+            if args and args[0] is not None and isinstance(args[0], str):
+                return result.alias(args[0])
+            return result
+
+        def _max_w(col: Any, *args: Any) -> Any:
+            result = _wrap_col(_r.max(_unwrap(col)))
+            if args and args[0] is not None and isinstance(args[0], str):
+                return result.alias(args[0])
+            return result
+
+        min_ = staticmethod(_min_w)
+        max_ = staticmethod(_max_w)
         count_distinct = staticmethod(_wrap1(_r.count_distinct))
 
     # PySpark uses sum, min, max (not sum_, min_, max_)

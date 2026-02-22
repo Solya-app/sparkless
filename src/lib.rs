@@ -19,8 +19,9 @@ use std::sync::Mutex;
 
 static GLOBAL_SESSION: Mutex<Option<InnerSession>> = Mutex::new(None);
 
-/// Get or create the global Robin session. Used by pyfunctions (register_temp_view, etc.).
-fn get_or_create_session() -> InnerSession {
+/// Get or create the global Robin session. Used by pyfunctions (register_temp_view, etc.)
+/// and by PyGroupedData (agg, count, etc.) so the crate has an active session.
+pub(crate) fn get_or_create_session() -> InnerSession {
     let mut g = GLOBAL_SESSION.lock().unwrap();
     if g.is_none() {
         *g = Some(
@@ -607,6 +608,7 @@ fn sparkless_robin(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pyfunctions::format_string, m)?)?;
     m.add_function(wrap_pyfunction!(pyfunctions::array, m)?)?;
     m.add_function(wrap_pyfunction!(pyfunctions::create_map, m)?)?;
+    m.add_function(wrap_pyfunction!(pyfunctions::get_item, m)?)?;
     // Math
     m.add_function(wrap_pyfunction!(pyfunctions::abs, m)?)?;
     m.add_function(wrap_pyfunction!(pyfunctions::ceil, m)?)?;

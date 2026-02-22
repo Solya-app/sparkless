@@ -152,6 +152,11 @@ class _RobinRuntimeConfig:
     def set(self, key: str, value: Any) -> None:
         self._conf[key] = str(value)
 
+    def is_case_sensitive(self) -> bool:
+        """Return True if spark.sql.caseSensitive is enabled (PySpark compatibility)."""
+        value = self.get("spark.sql.caseSensitive", "false")
+        return value.lower() in ("true", "1", "yes")
+
 
 class RobinSparkSession:
     """PySpark-compatible SparkSession backed by PySparkSession from sparkless_robin."""
@@ -820,6 +825,42 @@ class RobinGroupedData:
     def count(self) -> RobinDataFrame:
         """Return aggregated count per group. Delegates to Rust PyGroupedData.count()."""
         return RobinDataFrame(self._inner.count())
+
+    def avg(self, *cols: Any) -> RobinDataFrame:
+        """Average per group. PySpark: groupBy(...).avg('col') or .avg('a', 'b')."""
+        if len(cols) == 1 and isinstance(cols[0], str):
+            return RobinDataFrame(self._inner.avg(cols[0]))
+        from ._robin_functions import get_robin_functions
+        F = get_robin_functions()
+        exprs = [F.avg(F.col(c) if isinstance(c, str) else c) for c in cols]
+        return self.agg(*exprs)
+
+    def sum(self, *cols: Any) -> RobinDataFrame:
+        """Sum per group. PySpark: groupBy(...).sum('col') or .sum('a', 'b')."""
+        if len(cols) == 1 and isinstance(cols[0], str):
+            return RobinDataFrame(self._inner.sum(cols[0]))
+        from ._robin_functions import get_robin_functions
+        F = get_robin_functions()
+        exprs = [F.sum(F.col(c) if isinstance(c, str) else c) for c in cols]
+        return self.agg(*exprs)
+
+    def min(self, *cols: Any) -> RobinDataFrame:
+        """Min per group. PySpark: groupBy(...).min('col')."""
+        if len(cols) == 1 and isinstance(cols[0], str):
+            return RobinDataFrame(self._inner.min(cols[0]))
+        from ._robin_functions import get_robin_functions
+        F = get_robin_functions()
+        exprs = [F.min(F.col(c) if isinstance(c, str) else c) for c in cols]
+        return self.agg(*exprs)
+
+    def max(self, *cols: Any) -> RobinDataFrame:
+        """Max per group. PySpark: groupBy(...).max('col')."""
+        if len(cols) == 1 and isinstance(cols[0], str):
+            return RobinDataFrame(self._inner.max(cols[0]))
+        from ._robin_functions import get_robin_functions
+        F = get_robin_functions()
+        exprs = [F.max(F.col(c) if isinstance(c, str) else c) for c in cols]
+        return self.agg(*exprs)
 
     def mean(self, *cols: Any) -> RobinDataFrame:
         """Mean (avg) per group. PySpark: groupBy(...).mean('a', 'b') or .mean()."""

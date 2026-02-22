@@ -129,6 +129,54 @@ impl PyColumn {
         Ok(Self::from_robin(RobinColumn::from_expr(combined, None)))
     }
 
+    /// Python operator: col + other
+    fn __add__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let other_col = py_any_to_column(other)?;
+        let combined = self.inner.expr().clone() + other_col.expr().clone();
+        Ok(Self::from_robin(RobinColumn::from_expr(combined, None)))
+    }
+
+    /// Python operator: col - other
+    fn __sub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let other_col = py_any_to_column(other)?;
+        let combined = self.inner.expr().clone() - other_col.expr().clone();
+        Ok(Self::from_robin(RobinColumn::from_expr(combined, None)))
+    }
+
+    /// Python operator: col * other
+    fn __mul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let other_col = py_any_to_column(other)?;
+        let combined = self.inner.expr().clone() * other_col.expr().clone();
+        Ok(Self::from_robin(RobinColumn::from_expr(combined, None)))
+    }
+
+    /// Python operator: col / other (truediv)
+    fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let other_col = py_any_to_column(other)?;
+        let combined = self.inner.expr().clone() / other_col.expr().clone();
+        Ok(Self::from_robin(RobinColumn::from_expr(combined, None)))
+    }
+
+    /// Python operator: col // other (floordiv)
+    fn __floordiv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let other_col = py_any_to_column(other)?;
+        let combined = (self.inner.expr().clone() / other_col.expr().clone()).floor();
+        Ok(Self::from_robin(RobinColumn::from_expr(combined, None)))
+    }
+
+    /// Python operator: col % other
+    fn __mod__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let other_col = py_any_to_column(other)?;
+        let combined = self.inner.expr().clone() % other_col.expr().clone();
+        Ok(Self::from_robin(RobinColumn::from_expr(combined, None)))
+    }
+
+    /// Python operator: ~col (logical not)
+    fn __invert__(&self) -> PyResult<Self> {
+        let not_expr = self.inner.expr().clone().not();
+        Ok(Self::from_robin(RobinColumn::from_expr(not_expr, None)))
+    }
+
     fn isin_(&self, values: &Bound<'_, PyAny>) -> PyResult<Self> {
         let list = values.downcast::<pyo3::types::PyList>()
             .map_err(|_| PyValueError::new_err("isin requires a list of values"))?;
@@ -193,6 +241,7 @@ impl PyColumn {
 }
 
 /// Convert PyAny to column/expression for select. Str = col(name), PyColumn = as-is.
+/// Also accepts RobinColumn (Python wrapper with _inner).
 pub fn py_any_to_select_expr(obj: &Bound<'_, PyAny>) -> PyResult<RobinColumn> {
     if let Ok(py_col) = obj.extract::<PyRef<'_, PyColumn>>() {
         return Ok(py_col.as_robin().clone());
@@ -200,15 +249,34 @@ pub fn py_any_to_select_expr(obj: &Bound<'_, PyAny>) -> PyResult<RobinColumn> {
     if let Ok(name) = obj.extract::<String>() {
         return Ok(functions::col(&name));
     }
+    if obj.hasattr("_inner").unwrap_or(false) {
+        if let Ok(inner) = obj.getattr("_inner") {
+            if let Ok(py_col) = inner.extract::<PyRef<'_, PyColumn>>() {
+                return Ok(py_col.as_robin().clone());
+            }
+        }
+    }
+    if obj.is_instance_of::<crate::pysortorder::PySortOrder>() {
+        return Err(PyValueError::new_err(
+            "select expects Column or str, got SortOrder; use orderBy for sort keys",
+        ));
+    }
     Err(PyValueError::new_err(
         "select expects Column or str".to_string(),
     ))
 }
 
-/// Convert PyAny to Robin Column (expression context). Handles PyColumn, str (as literal), int, float, bool, None.
+/// Convert PyAny to Robin Column (expression context). Handles PyColumn, RobinColumn (_inner), str (as literal), int, float, bool, None.
 pub fn py_any_to_column(obj: &Bound<'_, PyAny>) -> PyResult<RobinColumn> {
     if let Ok(py_col) = obj.extract::<PyRef<'_, PyColumn>>() {
         return Ok(py_col.as_robin().clone());
+    }
+    if obj.hasattr("_inner").unwrap_or(false) {
+        if let Ok(inner) = obj.getattr("_inner") {
+            if let Ok(py_col) = inner.extract::<PyRef<'_, PyColumn>>() {
+                return Ok(py_col.as_robin().clone());
+            }
+        }
     }
     if obj.is_none() {
         return Ok(RobinColumn::null_boolean());

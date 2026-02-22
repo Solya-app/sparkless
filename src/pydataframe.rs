@@ -6,6 +6,7 @@ use pyo3::types::PyList;
 use robin_sparkless::dataframe::GroupedData as RobinGroupedData;
 use robin_sparkless::dataframe::JoinType as RobinJoinType;
 use robin_sparkless::DataFrame as RobinDataFrame;
+use robin_sparkless::functions as robin_functions;
 
 use crate::pycolumn::{py_any_to_column, py_any_to_select_expr, PyColumn};
 use crate::pysortorder::PySortOrder;
@@ -193,6 +194,7 @@ pub struct PyGroupedData {
 impl PyGroupedData {
     /// Apply aggregations (e.g. F.sum("a"), F.count("*")). Takes list of Column expressions.
     fn agg(&self, exprs: &Bound<'_, PyList>) -> PyResult<PyDataFrame> {
+        let _ = crate::get_or_create_session();
         let mut cols = Vec::with_capacity(exprs.len());
         for item in exprs.iter() {
             let py_col = item.downcast::<PyColumn>()?;
@@ -208,6 +210,56 @@ impl PyGroupedData {
     fn pivot(&self, pivot_col: &str, values: Option<Vec<String>>) -> PyPivotedGroupedData {
         let pivoted = self.inner.pivot(pivot_col, values);
         PyPivotedGroupedData { inner: pivoted }
+    }
+
+    /// Count rows per group. PySpark: groupBy(...).count()
+    fn count(&self) -> PyResult<PyDataFrame> {
+        let _ = crate::get_or_create_session();
+        let count_col = robin_functions::count(&robin_functions::col("*"));
+        self.inner
+            .agg_columns(vec![count_col])
+            .map(Self::from_robin_df)
+            .map_err(|e| PyValueError::new_err(format!("count failed: {e}")))
+    }
+
+    /// Average of column per group. PySpark: groupBy(...).avg("col") or .mean("col")
+    fn avg(&self, column: &str) -> PyResult<PyDataFrame> {
+        let _ = crate::get_or_create_session();
+        let avg_col = robin_functions::avg(&robin_functions::col(column));
+        self.inner
+            .agg_columns(vec![avg_col])
+            .map(Self::from_robin_df)
+            .map_err(|e| PyValueError::new_err(format!("avg failed: {e}")))
+    }
+
+    /// Sum of column per group. PySpark: groupBy(...).sum("col")
+    fn sum(&self, column: &str) -> PyResult<PyDataFrame> {
+        let _ = crate::get_or_create_session();
+        let sum_col = robin_functions::sum(&robin_functions::col(column));
+        self.inner
+            .agg_columns(vec![sum_col])
+            .map(Self::from_robin_df)
+            .map_err(|e| PyValueError::new_err(format!("sum failed: {e}")))
+    }
+
+    /// Min of column per group. PySpark: groupBy(...).min("col")
+    fn min(&self, column: &str) -> PyResult<PyDataFrame> {
+        let _ = crate::get_or_create_session();
+        let min_col = robin_functions::min(&robin_functions::col(column));
+        self.inner
+            .agg_columns(vec![min_col])
+            .map(Self::from_robin_df)
+            .map_err(|e| PyValueError::new_err(format!("min failed: {e}")))
+    }
+
+    /// Max of column per group. PySpark: groupBy(...).max("col")
+    fn max(&self, column: &str) -> PyResult<PyDataFrame> {
+        let _ = crate::get_or_create_session();
+        let max_col = robin_functions::max(&robin_functions::col(column));
+        self.inner
+            .agg_columns(vec![max_col])
+            .map(Self::from_robin_df)
+            .map_err(|e| PyValueError::new_err(format!("max failed: {e}")))
     }
 }
 

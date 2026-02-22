@@ -86,8 +86,14 @@ class WindowSpec:
             cols_list = [col for col in cols if not isinstance(col, list)]
 
         for col in cols_list:
-            # Check if it's a string or has the name attribute (Column-like)
-            if not isinstance(col, str) and not hasattr(col, "name"):
+            # Check if it's a string, Column-like (has name), or SortOrder (e.g. PySortOrder from Robin)
+            if isinstance(col, str):
+                pass
+            elif hasattr(col, "name"):
+                pass
+            elif type(col).__name__ == "PySortOrder":
+                pass
+            else:
                 raise ValueError(
                     f"Invalid column type: {type(col)}. Must be str or Column"
                 )
@@ -122,8 +128,14 @@ class WindowSpec:
             cols_list = [col for col in cols if not isinstance(col, list)]
 
         for col in cols_list:
-            # Check if it's a string or has the name attribute (Column-like)
-            if not isinstance(col, str) and not hasattr(col, "name"):
+            # Check if it's a string, Column-like (has name), or SortOrder (e.g. PySortOrder from Robin)
+            if isinstance(col, str):
+                pass
+            elif hasattr(col, "name"):
+                pass
+            elif type(col).__name__ == "PySortOrder":
+                pass
+            else:
                 raise ValueError(
                     f"Invalid column type: {type(col)}. Must be str or Column"
                 )
