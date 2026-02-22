@@ -42,19 +42,23 @@ def _json_safe_value(value: Any) -> Any:
 
 def serialize_schema(schema: Any) -> List[Dict[str, str]]:
     """Serialize a StructType (or list of column names) to a list of {name, type} dicts."""
-    if hasattr(schema, "fields") and schema.fields:
-        return [
-            {"name": f.name, "type": f.dataType.simpleString()}
-            for f in schema.fields
-        ]
+    if schema is not None and hasattr(schema, "fields"):
+        fields = getattr(schema, "fields", None)
+        if fields:
+            return [
+                {"name": f.name, "type": f.dataType.simpleString()}
+                for f in fields
+            ]
     # List/tuple of column names (e.g. ["a", "b"]) -> string type for each
     if isinstance(schema, (list, tuple)) and schema:
         return [{"name": str(s), "type": "string"} for s in schema]
     return []
 
 
-def schema_from_robin_list(entries: List[Dict[str, str]]) -> StructType:
-    """Convert Robin schema format [{\"name\": str, \"type\": str}] to StructType."""
+def schema_from_robin_list(entries: Any) -> StructType:
+    """Convert Robin schema format [{\"name\": str, \"type\": str}] to StructType. Handles None/empty."""
+    if not entries:
+        return StructType([])
     from ..spark_types import StringType
 
     _simple_type: Dict[str, Any] = {

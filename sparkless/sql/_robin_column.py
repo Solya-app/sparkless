@@ -278,6 +278,14 @@ class RobinColumn:
             return _wrap(self._inner.is_null())
         return _wrap(self._f().is_null(self._inner))
 
+    def isNotNull(self) -> RobinColumn:
+        """True if not null. PySpark alias; crate has is_not_null/isnotnull."""
+        if hasattr(self._inner, "isnotnull"):
+            return _wrap(self._inner.isnotnull())
+        if hasattr(self._inner, "is_not_null"):
+            return _wrap(self._inner.is_not_null())
+        return _wrap(self._f().is_null(self._inner).__invert__())
+
     @property
     def name(self) -> str:
         """Column name. Delegate to inner if present."""
@@ -316,6 +324,26 @@ class RobinColumn:
             "Column.replace is not implemented for the Robin backend. "
             "See docs/robin_parity_matrix.md and tests/robin_skip_list.json."
         )
+
+    def when(self, cond: Any, value: Any = None) -> "RobinCaseWhenBuilder":
+        """PySpark: col.when(cond) or col.when(cond, value). Returns builder for .when()/.otherwise()."""
+        return RobinCaseWhenBuilder(self).when(cond, value)
+
+    def otherwise(self, value: Any) -> RobinColumn:
+        """PySpark: col.otherwise(value). Single-branch when: when(self) then null else value."""
+        return RobinCaseWhenBuilder(self).otherwise(value)
+
+    def contains(self, substring: str) -> RobinColumn:
+        """PySpark: col.contains(substring). Use F fallback if inner PyColumn has no contains."""
+        if hasattr(self._inner, "contains") and callable(getattr(self._inner, "contains")):
+            return _wrap(self._inner.contains(substring))
+        return _wrap(self._f().contains(self._inner, substring))
+
+    def format(self, format_str: str, *cols: Any) -> RobinColumn:
+        """PySpark: col.format(format_str, *cols) - printf-style format. Use F fallback if needed."""
+        if hasattr(self._inner, "format") and callable(getattr(self._inner, "format")):
+            return _wrap(self._inner.format(format_str, tuple(_unwrap(c) for c in cols)))
+        return _wrap(self._f().format_string(format_str, self, *cols))
 
     def like(self, pattern: str) -> RobinColumn:
         """SQL LIKE."""

@@ -102,12 +102,14 @@ def _rows_to_dicts(
                 out.append(row)
         return out
     names = []
-    if schema is not None and hasattr(schema, "fields") and getattr(schema, "fields", None):
-        names = [f.name for f in schema.fields]
-    elif schema is not None and hasattr(schema, "fieldNames"):
-        names = list(schema.fieldNames())
-    elif isinstance(schema, (list, tuple)):
-        names = [str(s) for s in schema]
+    if schema is not None:
+        fields = getattr(schema, "fields", None)
+        if fields:
+            names = [f.name for f in fields]
+        elif hasattr(schema, "fieldNames"):
+            names = list(schema.fieldNames())
+        elif isinstance(schema, (list, tuple)):
+            names = [str(s) for s in schema]
     if not names:
         return list(data) if all(isinstance(r, dict) for r in data) else []
     out = []
@@ -220,8 +222,14 @@ class RobinSparkSession:
         if schema is None:
             if not data_list:
                 raise ValueError("createDataFrame requires schema when data is empty")
-            # Ensure dict rows for inference (tuples need schema to convert)
-            data_list = _rows_to_dicts(data_list, None)
+            # If first row is tuple/list, infer positional column names (_1, _2, ...) and convert to dicts
+            if data_list and isinstance(data_list[0], (list, tuple)):
+                n_cols = len(data_list[0])
+                names = [f"_{i + 1}" for i in range(n_cols)]
+                _schema_for_rows = type("_Schema", (), {"fieldNames": lambda self=None, *a: names, "fields": []})()
+                data_list = _rows_to_dicts(data_list, _schema_for_rows)
+            else:
+                data_list = _rows_to_dicts(data_list, None)
             if data_list and not isinstance(data_list[0], dict):
                 raise ValueError("createDataFrame requires schema when data is list of tuples")
             inferred_schema, normalized_data = SchemaInferenceEngine.infer_from_data(
@@ -263,6 +271,18 @@ class RobinSparkSession:
                     "createDataFrame: schema is required and must be non-empty when data is non-empty "
                     "(e.g. provide a StructType or list of column names)."
                 )
+
+        # Crate expects list of dicts (rows) and list of {name, type} dicts (schema); never pass str
+        for i, row in enumerate(data_list):
+            if not isinstance(row, dict):
+                raise ValueError(
+                    f"createDataFrame expects each row to be a dict; row {i} is {type(row).__name__}. "
+                    "Use list of dicts or provide schema for tuple/list rows."
+                )
+        schema_list = [
+            s if isinstance(s, dict) else {"name": str(s), "type": "string"}
+            for s in schema_list
+        ]
 
         df = self._inner.createDataFrame(data_list, schema_list)
         return RobinDataFrame(df)
@@ -340,7 +360,11 @@ class RobinSparkSessionBuilder:
         return self
 
     def getOrCreate(self) -> RobinSparkSession:
-        return RobinSparkSession(self._inner.get_or_create())
+        session = RobinSparkSession(self._inner.get_or_create())
+        # Propagate builder config so spark.conf.get / is_case_sensitive() see builder-set values
+        for k, v in self._config.items():
+            session._conf._conf[k] = str(v)
+        return session
 
 
 # PySpark compatibility: SparkSession.builder.appName(...).getOrCreate()
@@ -402,11 +426,16 @@ class RobinDataFrame:
         if name.startswith("_"):
             raise AttributeError(name)
         # Reserved attributes that are not column references
-        if name in ("columns", "schema"):
+        if name in ("columns", "schema", "write"):
             raise AttributeError(name)
         from ._robin_functions import get_robin_functions
 
         return get_robin_functions().col(name)
+
+    @property
+    def write(self) -> "RobinDataFrameWriter":
+        """PySpark compat: df.write -> DataFrameWriter for save/saveAsTable."""
+        return RobinDataFrameWriter(self)
 
     @property
     def columns(self) -> List[str]:

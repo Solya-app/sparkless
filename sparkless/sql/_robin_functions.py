@@ -205,7 +205,14 @@ def _robin_functions_module() -> Any:
 
         min_ = staticmethod(_min_w)
         max_ = staticmethod(_max_w)
-        count_distinct = staticmethod(_wrap1(_r.count_distinct))
+
+        def _count_distinct_w(col: Any, *args: Any) -> Any:
+            result = _wrap_col(_r.count_distinct(_unwrap(col)))
+            if args and args[0] is not None and isinstance(args[0], str):
+                return result.alias(args[0])
+            return result
+
+        count_distinct = staticmethod(_count_distinct_w)
 
     # PySpark uses sum, min, max (not sum_, min_, max_)
     RobinFunctions.sum = RobinFunctions.sum_  # type: ignore[attr-defined]
