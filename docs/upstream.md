@@ -10,7 +10,22 @@ Sparkless v4 depends on **robin-sparkless 0.15.0** (see `Cargo.toml`). **0.15.0*
 - **[#627](https://github.com/eddiethedean/robin-sparkless/issues/627)** — `create_dataframe_from_rows`: map&lt;string,string&gt; support.
 - **[#628](https://github.com/eddiethedean/robin-sparkless/issues/628)** — collect: string vs numeric type comparison.
 - **[#629](https://github.com/eddiethedean/robin-sparkless/issues/629)** — Table or view not found after `createOrReplaceTempView`.
-- Other parity issues reported from Sparkless v4 testing (e.g. groupBy agg, window, between/power/cast, empty DataFrame parquet).
+- **[#633](https://github.com/eddiethedean/robin-sparkless/issues/633)** — create_dataframe_from_rows: unsupported type map&lt;string,string&gt;.
+- **[#634](https://github.com/eddiethedean/robin-sparkless/issues/634)** — create_dataframe_from_rows: struct value must be object or array.
+- **[#635](https://github.com/eddiethedean/robin-sparkless/issues/635)** — collect failed: cannot compare string with numeric type.
+- **[#636](https://github.com/eddiethedean/robin-sparkless/issues/636)** — Case sensitivity and column-not-found (not found: ID).
+- **[#637](https://github.com/eddiethedean/robin-sparkless/issues/637)** — isin with empty list semantics.
+- **[#638](https://github.com/eddiethedean/robin-sparkless/issues/638)** — isin: cannot check List(Int64) in String data (mixed types).
+- **[#639](https://github.com/eddiethedean/robin-sparkless/issues/639)** — Right, outer, semi, anti join wrong row count.
+- **[#640](https://github.com/eddiethedean/robin-sparkless/issues/640)** — between, power, cast in logical plan.
+- **[#641](https://github.com/eddiethedean/robin-sparkless/issues/641)** — groupBy + agg (sum, count) in logical plan.
+- **[#642](https://github.com/eddiethedean/robin-sparkless/issues/642)** — row_number() over (partition by col) window.
+- **[#643](https://github.com/eddiethedean/robin-sparkless/issues/643)** — Empty DataFrame + parquet table append / catalog.
+- **[#644](https://github.com/eddiethedean/robin-sparkless/issues/644)** — cannot convert to Column.
+- **[#645](https://github.com/eddiethedean/robin-sparkless/issues/645)** — select expects Column or str.
+- **[#646](https://github.com/eddiethedean/robin-sparkless/issues/646)** — filter predicate must be Boolean, got String.
+- **[#649](https://github.com/eddiethedean/robin-sparkless/issues/649)** — Cast/conversion semantics (str to datetime/i32, f64 to i32, string to boolean).
+- **[#672](https://github.com/eddiethedean/robin-sparkless/issues/672)** — Aggregation result column names (e.g. avg(Value) vs Value); PySpark uses \`avg(Value)\`, Robin may use \`Value\`.
 
 ## Robin-Sparkless PySpark parity
 

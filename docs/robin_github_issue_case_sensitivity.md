@@ -1,5 +1,7 @@
 # [PySpark parity] Case sensitivity and column-not-found (not found: ID / Column 'value')
 
+**Upstream issue:** [#492](https://github.com/eddiethedean/robin-sparkless/issues/492), [#636](https://github.com/eddiethedean/robin-sparkless/issues/636)
+
 ## Summary
 
 When executing logical plans via the robin-sparkless crate (e.g. through Sparkless v4), **column-not-found** errors can occur when the plan or a later step references a column name that does not match the schema exactly (e.g. case difference: `ID` vs `id`). Errors observed: `not found: Column 'value'`, `not found: ID`, `Available columns: [id, name, value]`. Sparkless preserves the exact names from the logical plan and schema and does not change case when adapting. PySpark typically allows case-insensitive column resolution when `spark.sql.caseSensitive` is false.

@@ -1,5 +1,7 @@
 # [PySpark parity] Right, outer, semi, and anti join return wrong row count
 
+**Upstream issue:** [#639](https://github.com/eddiethedean/robin-sparkless/issues/639)
+
 ## Summary
 
 When executing **right**, **outer**, **left_semi**, or **left_anti** join via the robin-sparkless crate (e.g. through Sparkless v4), the crate returns **0 rows** or incorrect results. PySpark returns correct row counts. Inner/left may work; right/outer/semi/anti do not.

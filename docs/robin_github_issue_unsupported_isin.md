@@ -1,5 +1,7 @@
 # [PySpark parity] Unsupported function / op: isin
 
+**Upstream issue:** [#638](https://github.com/eddiethedean/robin-sparkless/issues/638), [#650](https://github.com/eddiethedean/robin-sparkless/issues/650)
+
 ## Summary
 
 When executing logical plans via the robin-sparkless crate (e.g. through Sparkless v4), the **isin** operation is not supported. The plan adapter emits `isin` as an op with left/right (column and list of values). The crate reports `unsupported function: isin` or `unsupported expression op: isin`. PySpark supports `col.isin(*values)`.

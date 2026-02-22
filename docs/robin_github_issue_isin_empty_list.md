@@ -1,5 +1,7 @@
 # [PySpark parity] isin with empty list semantics
 
+**Upstream issue:** [#637](https://github.com/eddiethedean/robin-sparkless/issues/637)
+
 ## Summary
 
 In PySpark, **`col.isin([])`** (column is-in empty list) evaluates to **false for every row**. When Sparkless sends this to the robin-sparkless crate, it may emit `isin` with two arguments (e.g. column and `lit(None)`) to satisfy a minimum-argument requirement. If the crate interprets that as "value is in {null}" or otherwise returns true/null for some rows, behavior diverges from PySpark. PySpark semantics: empty list → always false.

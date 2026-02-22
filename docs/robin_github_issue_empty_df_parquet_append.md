@@ -1,5 +1,7 @@
 # [PySpark parity] Empty DataFrame with explicit schema + parquet table append / catalog
 
+**Upstream issue:** [#643](https://github.com/eddiethedean/robin-sparkless/issues/643)
+
 ## Summary
 
 When using the robin-sparkless engine (via Sparkless v4), creating an **empty DataFrame with an explicit schema** and then writing it as a **parquet-format table** and appending rows fails or raises "can not infer schema from empty dataset". The same flow works in PySpark.

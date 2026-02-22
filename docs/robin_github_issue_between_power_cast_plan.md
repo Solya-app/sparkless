@@ -1,5 +1,7 @@
 # [PySpark parity] between, power (**), and cast in logical plan
 
+**Upstream issue:** [#640](https://github.com/eddiethedean/robin-sparkless/issues/640)
+
 ## Summary
 
 For PySpark parity, the robin-sparkless engine should support in the logical plan (or equivalent execution): **(1) between(lower, upper)** (inclusive), **(2) power (**)** , and **(3) cast to string**. When run via Sparkless v4 (Robin), a pipeline of filter(between) + withColumn(power) + withColumn(cast) may fail or produce wrong results.

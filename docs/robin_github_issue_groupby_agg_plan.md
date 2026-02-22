@@ -1,5 +1,7 @@
 # [PySpark parity] groupBy + agg (sum, count) in logical plan
 
+**Upstream issue:** [#641](https://github.com/eddiethedean/robin-sparkless/issues/641)
+
 ## Summary
 
 For PySpark parity, the robin-sparkless engine should support **groupBy** with multiple aggregations (e.g. **sum**, **count**) and produce the same results as PySpark. When run via Sparkless v4 (Robin), this flow may fail with a plan/execution error or produce incorrect results.

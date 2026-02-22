@@ -1,5 +1,7 @@
 # [PySpark parity] row_number() over (partition by col) window
 
+**Upstream issue:** [#642](https://github.com/eddiethedean/robin-sparkless/issues/642)
+
 ## Summary
 
 For PySpark parity, the robin-sparkless engine should support **window functions** such as **row_number()** with **partition_by** (and optionally order_by). When run via Sparkless v4 (Robin), `row_number().over(Window.partitionBy("col"))` may fail with a plan error or produce incorrect partition ordering.
