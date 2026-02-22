@@ -221,9 +221,11 @@ def _robin_functions_module() -> Any:
     # PySpark uses countDistinct (camelCase) as well as count_distinct
     RobinFunctions.countDistinct = RobinFunctions.count_distinct  # type: ignore[attr-defined]
 
-    # Optional: first, rank (if crate exposes them). rank(col) or rank(col, descending=False).
+    # Optional: first, rank (if crate exposes them). Wrap first so F.first(col).over(window) returns RobinColumn.
     if _first is not None:
-        RobinFunctions.first = staticmethod(_first)  # type: ignore[attr-defined]
+        def _first_w(col: Any, *args: Any, **kwargs: Any) -> Any:
+            return _wrap_col(_first(_unwrap(col), *args, **kwargs))
+        RobinFunctions.first = staticmethod(_first_w)  # type: ignore[attr-defined]
     if _rank is not None:
         RobinFunctions.rank = staticmethod(_wrap1(_rank))  # type: ignore[attr-defined]
     def _data_type_to_str(dt: Any) -> str:
@@ -275,7 +277,9 @@ def _robin_functions_module() -> Any:
     if _fill is not None:
         RobinFunctions.fill = staticmethod(_fill)  # type: ignore[attr-defined]
     if _over is not None:
-        RobinFunctions.over = staticmethod(_over)  # type: ignore[attr-defined]
+        def _over_w(col: Any, window: Any) -> Any:
+            return _wrap_col(_over(_unwrap(col), window))
+        RobinFunctions.over = staticmethod(_over_w)  # type: ignore[attr-defined]
     if _isin is not None:
         RobinFunctions.isin = staticmethod(_isin)  # type: ignore[attr-defined]
 

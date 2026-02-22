@@ -262,6 +262,10 @@ class RobinColumn:
         """Get item (array index or map key)."""
         return _wrap(self._f().get_item(self._inner, key))
 
+    def getField(self, index_or_name: Any) -> RobinColumn:
+        """Array element by index or struct field by name. PySpark: col.getField(0) or col.getField('name')."""
+        return self.getItem(index_or_name)
+
     def __getitem__(self, key: Any) -> RobinColumn:
         """PySpark: col[key] for array index or map key."""
         return self.getItem(key)
@@ -359,7 +363,29 @@ class RobinColumn:
 
     def over(self, window: Any) -> RobinColumn:
         """Window function. PySpark: col.over(window)."""
-        return _wrap(self._f().over(self._inner, window))
+        _r = self._f()
+        over_fn = getattr(_r, "over", None)
+        if over_fn is not None:
+            return _wrap(over_fn(self._inner, window))
+        if hasattr(self._inner, "over"):
+            return _wrap(self._inner.over(window))
+        raise NotImplementedError(
+            "over() is not implemented for the Robin backend. "
+            "See docs/robin_parity_matrix.md and tests/robin_skip_list.json."
+        )
+
+    def keys(self) -> RobinColumn:
+        """Map keys (column of keys). PySpark: col.keys() for map column."""
+        _r = self._f()
+        keys_fn = getattr(_r, "keys", None)
+        if keys_fn is not None:
+            return _wrap(keys_fn(self._inner))
+        if hasattr(self._inner, "keys"):
+            return _wrap(self._inner.keys())
+        raise NotImplementedError(
+            "keys() is not implemented for the Robin backend. "
+            "See docs/robin_parity_matrix.md and tests/robin_skip_list.json."
+        )
 
     def __iter__(self) -> Any:
         """Make single column iterable for left_on/right_on (list of one)."""

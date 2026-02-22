@@ -381,7 +381,12 @@ class DataFrameFactory:
 
             # Check if any rows are positional (tuple/list)
             if any(_is_positional_row(row) for row in data):
-                field_names = [field.name for field in schema.fields]
+                schema_fields = getattr(schema, "fields", None) if schema is not None else None
+                if not schema_fields:
+                    raise IllegalArgumentException(
+                        "Schema is required and must have fields when data contains tuple/list rows."
+                    )
+                field_names = [field.name for field in schema_fields]
                 field_count = len(field_names)
 
                 # PySpark requires strict length matching - validate before conversion

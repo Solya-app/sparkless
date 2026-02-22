@@ -920,6 +920,10 @@ class Row:
         data_dict = self.data if isinstance(self.data, dict) else dict(self.data)
         return data_dict.items()
 
+    def keys(self) -> List[str]:
+        """Return field names in order (PySpark Row.keys() compatibility)."""
+        return self._get_field_names_ordered()
+
     def __len__(self) -> int:
         """Get length."""
         return len(self.data)

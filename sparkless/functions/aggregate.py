@@ -53,7 +53,7 @@ class AggregateFunctions:
         Raises:
             RuntimeError: If no active SparkSession is available
         """
-        from sparkless.session.core.session import SparkSession
+        from sparkless.session import SparkSession
 
         # Check if we're running in PySpark mode by trying to import PySpark
         try:

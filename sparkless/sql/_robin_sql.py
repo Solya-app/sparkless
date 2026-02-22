@@ -210,10 +210,11 @@ class RobinSparkSession:
     ) -> "RobinDataFrame":
         """createDataFrame with optional schema inference."""
         _r = _get_robin()
-        # Normalize data to list of dicts
-        if hasattr(data, "toDict"):
-            # Pandas DataFrame
+        # Normalize data to list of dicts (PySpark toDict('records') or pandas to_dict(orient='records'))
+        if hasattr(data, "toDict") and callable(getattr(data, "toDict", None)):
             data_list = data.toDict("records")  # type: ignore[union-attr]
+        elif hasattr(data, "to_dict") and callable(getattr(data, "to_dict", None)):
+            data_list = data.to_dict(orient="records")  # type: ignore[union-attr]
         elif isinstance(data, (list, tuple)):
             data_list = list(data)
         else:
@@ -231,7 +232,10 @@ class RobinSparkSession:
             else:
                 data_list = _rows_to_dicts(data_list, None)
             if data_list and not isinstance(data_list[0], dict):
-                raise ValueError("createDataFrame requires schema when data is list of tuples")
+                raise ValueError(
+                    "createDataFrame requires schema when data is list of tuples, "
+                    "or pass a list of dicts / pandas DataFrame."
+                )
             inferred_schema, normalized_data = SchemaInferenceEngine.infer_from_data(
                 data_list
             )
@@ -426,7 +430,7 @@ class RobinDataFrame:
         if name.startswith("_"):
             raise AttributeError(name)
         # Reserved attributes that are not column references
-        if name in ("columns", "schema", "write"):
+        if name in ("columns", "schema", "write", "na", "rdd"):
             raise AttributeError(name)
         from ._robin_functions import get_robin_functions
 
@@ -436,6 +440,20 @@ class RobinDataFrame:
     def write(self) -> "RobinDataFrameWriter":
         """PySpark compat: df.write -> DataFrameWriter for save/saveAsTable."""
         return RobinDataFrameWriter(self)
+
+    @property
+    def na(self) -> Any:
+        """PySpark compat: df.na.drop(), df.na.fill(), df.na.replace()."""
+        from ..dataframe.attribute_handler import NAHandler
+        return NAHandler(self)
+
+    @property
+    def rdd(self) -> Any:
+        """PySpark compat: df.rdd.flatMap(), .map(), .filter(), etc."""
+        from ..dataframe.rdd import MockRDD
+        rows = self.collect()
+        data = [r.asDict() if hasattr(r, "asDict") else dict(r) for r in rows]
+        return MockRDD(data)
 
     @property
     def columns(self) -> List[str]:
@@ -674,6 +692,35 @@ class RobinDataFrame:
     def drop_duplicates(self, subset: Optional[Union[List[str], Any]] = None) -> "RobinDataFrame":
         """Alias for dropDuplicates()."""
         return self.dropDuplicates(subset)
+
+    def dropna(
+        self,
+        how: str = "any",
+        thresh: Optional[int] = None,
+        subset: Optional[Union[List[str], Any]] = None,
+    ) -> "RobinDataFrame":
+        """Drop rows with nulls. how='any'|'all', thresh=min non-null count, subset=columns to consider."""
+        rows = self._inner.collect()
+        schema_list = self._inner.schema()
+        if not rows:
+            return self
+        col_names = self._subset_to_column_names(subset) or self.columns
+        filtered = []
+        for row in rows:
+            r = dict(row)
+            null_count = sum(1 for k in col_names if k in r and r[k] is None)
+            non_null_count = len(col_names) - null_count
+            if thresh is not None:
+                keep = non_null_count >= thresh
+            elif how == "all":
+                keep = null_count < len(col_names)
+            else:
+                keep = null_count == 0
+            if keep:
+                filtered.append(r)
+        session = get_or_create_robin_session()
+        schema_struct = schema_from_robin_list(schema_list)
+        return session.createDataFrame(filtered, schema_struct)
 
     def fillna(
         self,
