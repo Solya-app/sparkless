@@ -26,6 +26,7 @@ Sparkless v4 depends on **robin-sparkless 0.15.0** (see `Cargo.toml`). **0.15.0*
 - **[#646](https://github.com/eddiethedean/robin-sparkless/issues/646)** — filter predicate must be Boolean, got String.
 - **[#649](https://github.com/eddiethedean/robin-sparkless/issues/649)** — Cast/conversion semantics (str to datetime/i32, f64 to i32, string to boolean).
 - **[#672](https://github.com/eddiethedean/robin-sparkless/issues/672)** — Aggregation result column names (e.g. avg(Value) vs Value); PySpark uses \`avg(Value)\`, Robin may use \`Value\`.
+- **[#678](https://github.com/eddiethedean/robin-sparkless/issues/678)** — DESCRIBE DETAIL (Delta Lake): not supported or different semantics.
 
 ## Robin-Sparkless PySpark parity
 

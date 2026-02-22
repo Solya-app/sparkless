@@ -1,12 +1,12 @@
-//! PyO3 wrapper for robin_sparkless::DataFrame.
+//! PyO3 wrapper for robin_sparkless_polars::DataFrame.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
-use robin_sparkless::dataframe::GroupedData as RobinGroupedData;
-use robin_sparkless::dataframe::JoinType as RobinJoinType;
-use robin_sparkless::DataFrame as RobinDataFrame;
-use robin_sparkless::functions as robin_functions;
+use robin_sparkless_polars::dataframe::GroupedData as RobinGroupedData;
+use robin_sparkless_polars::dataframe::JoinType as RobinJoinType;
+use robin_sparkless_polars::DataFrame as RobinDataFrame;
+use robin_sparkless_polars::functions as robin_functions;
 
 use crate::pycolumn::{py_any_to_column, py_any_to_select_expr, PyColumn};
 use crate::pysortorder::PySortOrder;
@@ -272,7 +272,7 @@ impl PyGroupedData {
 /// PivotedGroupedData: result of groupBy(...).pivot(col); has .sum(), .avg(), etc.
 #[pyclass]
 pub struct PyPivotedGroupedData {
-    pub(crate) inner: robin_sparkless::dataframe::PivotedGroupedData,
+    pub(crate) inner: robin_sparkless_polars::dataframe::PivotedGroupedData,
 }
 
 #[pymethods]

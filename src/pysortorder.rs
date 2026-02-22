@@ -1,8 +1,8 @@
-//! PyO3 wrapper for robin_sparkless::functions::SortOrder.
+//! PyO3 wrapper for robin_sparkless_polars::functions::SortOrder.
 //! Used by orderBy(col.desc(), ...) / order_by_exprs.
 
 use pyo3::prelude::*;
-use robin_sparkless::functions::SortOrder;
+use robin_sparkless_polars::functions::SortOrder;
 
 /// Python wrapper for Robin's SortOrder (result of col.desc(), col.asc(), etc.).
 #[pyclass]

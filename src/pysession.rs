@@ -1,9 +1,9 @@
-//! PyO3 wrapper for robin_sparkless::session::SparkSession.
+//! PyO3 wrapper for robin_sparkless_polars::session::SparkSession.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use robin_sparkless::session::SparkSession as InnerSession;
-use robin_sparkless::DataFrame as RobinDataFrame;
+use robin_sparkless_polars::session::SparkSession as InnerSession;
+use robin_sparkless_polars::DataFrame as RobinDataFrame;
 
 use crate::pydataframe::PyDataFrame;
 

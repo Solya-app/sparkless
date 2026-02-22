@@ -1,10 +1,10 @@
-//! PyO3 wrapper for robin_sparkless::column::Column.
+//! PyO3 wrapper for robin_sparkless_polars::column::Column.
 //! PyColumn holds a Robin Column; all expression logic is delegated to Robin.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use robin_sparkless::column::Column as RobinColumn;
-use robin_sparkless::functions;
+use robin_sparkless_polars::column::Column as RobinColumn;
+use robin_sparkless_polars::functions;
 
 /// Python wrapper for Robin's Column. Delegates all logic to Robin.
 #[pyclass(subclass)]
@@ -175,6 +175,22 @@ impl PyColumn {
     fn __invert__(&self) -> PyResult<Self> {
         let not_expr = self.inner.expr().clone().not();
         Ok(Self::from_robin(RobinColumn::from_expr(not_expr, None)))
+    }
+
+    /// PySpark: col.contains(substring) - substring check.
+    fn contains(&self, substring: &str) -> Self {
+        Self::from_robin(functions::contains(&self.inner, substring))
+    }
+
+    /// PySpark: col.format(format, *cols) - printf-style format with this column plus others.
+    #[pyo3(signature = (format, *cols))]
+    fn format(&self, format: &str, cols: &Bound<'_, pyo3::types::PyTuple>) -> PyResult<Self> {
+        let mut robin_cols = vec![self.inner.clone()];
+        for item in cols.iter() {
+            robin_cols.push(py_any_to_column(&item)?);
+        }
+        let refs: Vec<&RobinColumn> = robin_cols.iter().collect();
+        Ok(Self::from_robin(functions::format_string(format, &refs)))
     }
 
     fn isin_(&self, values: &Bound<'_, PyAny>) -> PyResult<Self> {

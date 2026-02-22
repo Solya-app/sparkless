@@ -10,15 +10,15 @@ See also: [upstream.md](upstream.md), [robin_parity_from_skipped_tests.md](robin
 
 | Short name | Description | Example test(s) | Upstream / notes |
 |------------|-------------|------------------|------------------|
-| create_dataframe_from_rows (array) | Array column value must be null or array; nested/triple nested/map/struct | test_getItem_with_array_index, test_array_type_elementtype_* | Crate: fix row/schema handling for arrays |
+| create_dataframe_from_rows (array) | Array column value must be null or array; nested/triple nested/map/struct | test_getItem_with_array_index, test_array_type_elementtype_* | [#625](https://github.com/eddiethedean/robin-sparkless/issues/625), [#611](https://github.com/eddiethedean/robin-sparkless/issues/611) |
 | create_dataframe_from_rows (map) | Unsupported type map&lt;string,string&gt; | test_getItem_with_map_key | [#627](https://github.com/eddiethedean/robin-sparkless/issues/627), [#633](https://github.com/eddiethedean/robin-sparkless/issues/633) |
 | create_dataframe_from_rows (struct) | Struct value must be object or array | test_nested_struct_field_access_all_cases, test_first_with_nested_struct | [#634](https://github.com/eddiethedean/robin-sparkless/issues/634), [robin_github_issue_create_dataframe_struct.md](robin_github_issue_create_dataframe_struct.md) |
-| create_dataframe_from_rows (schema empty) | Schema must not be empty when rows are not empty | test_filter_with_and_operator, test_append_* | Crate / Sparkless schema path |
+| create_dataframe_from_rows (schema empty) | Schema must not be empty when rows are not empty | test_filter_with_and_operator, test_append_* | [#624](https://github.com/eddiethedean/robin-sparkless/issues/624) |
 | select expects Column or str | select() with column expressions rejected | test_create_map_with_literals, test_create_map_* | [#176](https://github.com/eddiethedean/robin-sparkless/issues/176), [#503](https://github.com/eddiethedean/robin-sparkless/issues/503), [#645](https://github.com/eddiethedean/robin-sparkless/issues/645) |
 | cannot convert to Column | Array/column conversion in select | test_array_with_string_columns, test_array_with_list_of_strings (+43) | [#644](https://github.com/eddiethedean/robin-sparkless/issues/644) |
 | Table or view not found (SQL) | Temp view / table not found after createOrReplaceTempView or table() | test_basic_select, test_robin_sql_simple_select, test_robin_sql_group_by_agg | [#629](https://github.com/eddiethedean/robin-sparkless/issues/629) |
 | collect failed: not found: ID | Case-sensitive column resolution | test_join_case_insensitive, test_join_all_case_variations | [#492](https://github.com/eddiethedean/robin-sparkless/issues/492), [#636](https://github.com/eddiethedean/robin-sparkless/issues/636), [robin_github_issue_case_sensitivity.md](robin_github_issue_case_sensitivity.md) |
-| collect failed: type String is incompatible with Int64 | Union/join type coercion differs from PySpark | test_pyspark_parity_union_by_name | Crate: union/join coercion |
+| collect failed: type String is incompatible with Int64 | Union/join type coercion differs from PySpark | test_pyspark_parity_union_by_name | [#613](https://github.com/eddiethedean/robin-sparkless/issues/613), [#551](https://github.com/eddiethedean/robin-sparkless/issues/551) |
 | collect failed: cannot compare string with numeric | String vs numeric comparison semantics | test_numeric_eq_string | [#628](https://github.com/eddiethedean/robin-sparkless/issues/628), [#635](https://github.com/eddiethedean/robin-sparkless/issues/635) |
 | Window / row_number / percent_rank / lag / lead / ntile | Window functions not implemented or different semantics | test_row_number, test_percent_rank, test_window_* | [#642](https://github.com/eddiethedean/robin-sparkless/issues/642), [robin_github_issue_window_row_number_plan.md](robin_github_issue_window_row_number_plan.md) |
 | Empty DataFrame + parquet table | Schema-from-empty, append, spark.table() visibility | test_parquet_format_append_*, test_append_* | [#643](https://github.com/eddiethedean/robin-sparkless/issues/643), [robin_parity_from_skipped_tests.md](robin_parity_from_skipped_tests.md) §1 |
@@ -29,7 +29,7 @@ See also: [upstream.md](upstream.md), [robin_parity_from_skipped_tests.md](robin
 | create_map empty | Empty create_map | [robin_github_issue_create_map_empty.md](robin_github_issue_create_map_empty.md) | Fixed in crate 0.11.5 |
 | Filter predicate Boolean | filter(string_expr): predicate must be Boolean, got String | test_issue_203_filter_with_string | [#646](https://github.com/eddiethedean/robin-sparkless/issues/646), [robin_github_issue_filter_predicate_boolean.md](robin_github_issue_filter_predicate_boolean.md) |
 | collect type conversion | str→i32, str→datetime, f64→i32, string→boolean | test_column_astype, test_issue_432_* | [#649](https://github.com/eddiethedean/robin-sparkless/issues/649), [robin_github_issue_collect_type_conversion.md](robin_github_issue_collect_type_conversion.md) |
-| Describe detail / Delta | DESCRIBE DETAIL, Delta-specific | test_describe_detail_* | Session/DDL layer |
+| Describe detail / Delta | DESCRIBE DETAIL, Delta-specific | test_describe_detail_* | [#678](https://github.com/eddiethedean/robin-sparkless/issues/678), [robin_github_issue_describe_detail_delta.md](robin_github_issue_describe_detail_delta.md) |
 | Aggregation result column names | Robin may use different alias for agg columns (e.g. not `avg(Value)`); tests expect PySpark-style names | test_grouped_data_mean_*, test_grouped_data_mean_parity | [#672](https://github.com/eddiethedean/robin-sparkless/issues/672), [robin_github_issue_agg_result_column_names.md](robin_github_issue_agg_result_column_names.md) |
 
 ---
@@ -41,6 +41,7 @@ See also: [upstream.md](upstream.md), [robin_parity_from_skipped_tests.md](robin
 | udf import | Expose `udf` stub when Robin has no pandas_udf/UDFRegistration so `from sparkless.sql.functions import udf` succeeds | Done |
 | Session stop / _has_active_session | RobinSparkSession.stop(), _has_active_session classmethod | Done |
 | F.* window/sort | row_number, percent_rank, lag, lead, ntile, cume_dist, dense_rank from crate or stub | Done |
+| PyColumn format/contains | col.format(format, *cols), col.contains(substring) in Rust PyColumn; F.rank(col) via _wrap1, F.lag/F.lead(col, offset=1, default=None) wrappers for crate (col-only) API | Done |
 | RobinColumn methods | astype, substr, desc, asc, isin, getItem, over, fill, like, rlike, isNull, withField, name, startswith, __getitem__ | Done |
 | RobinColumn reverse operators | __radd__, __rmul__, __rsub__, __rtruediv__, __rfloordiv__, __rmod__ | Done |
 | fillna(subset) | Single Column or list of Columns normalized to column names | Done |
@@ -91,7 +92,7 @@ The following remain in the skip list or as upstream Robin limits; no Sparkless 
 
 ## 4. Test → category summary
 
-- **Skipped on Robin:** Tests in [tests/robin_skip_list.json](../tests/robin_skip_list.json) are skipped when `SPARKLESS_TEST_BACKEND=robin` so the suite can pass. Each skipped test corresponds to either a **Robin parity gap** (upstream) or a **Sparkless fix** not yet implemented. The skip list is merged from all failed test IDs (upstream + Sparkless limitations) so the Robin suite exits 0.
+- **Skipped on Robin:** Tests in [tests/robin_skip_list.json](../tests/robin_skip_list.json) are skipped when `SPARKLESS_TEST_BACKEND=robin` so the suite can pass. Each skipped test corresponds to either a **Robin parity gap** (upstream) or a **Sparkless fix** not yet implemented. The skip list is kept in sync with current failures so that with `SPARKLESS_TEST_BACKEND=robin`, the Robin run is **green** (0 failed; all other tests either pass or are skipped).
 - **Categories:** Upstream: create_dataframe_from_rows (array/schema/struct/map), select/Column semantics, table not found, type coercion, case sensitivity, window/expr/struct/udf. Sparkless: join on expression, crossJoin/first not implemented (if crate lacks cross_join), F.desc_nulls_last fallback, Column wrapping.
 - **Classification:** Run the suite, then `python tests/tools/parse_robin_results.py tests/results_robin_<timestamp>.txt -o tests/robin_results_parsed.json` to categorize each failure as `robin_sparkless` or `fix_sparkless`. Then `python tests/tools/generate_failure_report.py -i tests/robin_results_parsed.json -o tests/TEST_FAILURE_ANALYSIS.md` to refresh the report.
 
@@ -110,4 +111,12 @@ python tests/tools/parse_robin_results.py tests/results_robin_<timestamp>.txt -o
 python tests/tools/generate_failure_report.py -i tests/robin_results_parsed.json -o tests/TEST_FAILURE_ANALYSIS.md
 ```
 
-With the skip list applied, the same run (with `SPARKLESS_TEST_BACKEND=robin`) skips the tests in `robin_skip_list.json` and the suite can exit 0.
+With the skip list applied, the same run (with `SPARKLESS_TEST_BACKEND=robin`) skips the tests in `robin_skip_list.json` and the suite exits 0.
+
+**Merge new failures into the skip list:** After a run that produces `FAILED`/`ERROR` lines, merge those test IDs into the skip list so the next run stays green:
+
+```bash
+python tests/tools/merge_robin_failures_into_skip_list.py tests/results_robin_<timestamp>.txt -o tests/robin_skip_list.json
+```
+
+Then re-run with `SPARKLESS_TEST_BACKEND=robin` to confirm 0 failures.

@@ -8,10 +8,10 @@ use once_cell::sync::OnceCell;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyList, PyTuple};
-use robin_sparkless::delta;
-use robin_sparkless::schema::{DataType as RobinDataType, StructType as RobinStructType};
-use robin_sparkless::session::SparkSession as InnerSession;
-use robin_sparkless::{DataFrame as RobinDataFrame, SaveMode};
+use robin_sparkless_polars::delta;
+use robin_sparkless_polars::schema::{DataType as RobinDataType, StructType as RobinStructType};
+use robin_sparkless_polars::session::SparkSession as InnerSession;
+use robin_sparkless_polars::{DataFrame as RobinDataFrame, SaveMode};
 use serde_json::Value as JsonValue;
 use spark_ddl_parser::{parse_ddl_schema as parse_ddl_rs, StructType as DDLStructType};
 use std::collections::HashMap;
@@ -420,7 +420,7 @@ fn write_parquet(
     path: &str,
     overwrite: bool,
 ) -> PyResult<()> {
-    use robin_sparkless::dataframe::{WriteFormat, WriteMode};
+    use robin_sparkless_polars::dataframe::{WriteFormat, WriteMode};
     let schema_vec = parse_schema_from_python(schema)?;
     let data_rows = py_rows_to_json(py, data, &schema_vec)?;
     let session = get_or_create_session();
@@ -449,7 +449,7 @@ fn write_csv(
     path: &str,
     overwrite: bool,
 ) -> PyResult<()> {
-    use robin_sparkless::dataframe::{WriteFormat, WriteMode};
+    use robin_sparkless_polars::dataframe::{WriteFormat, WriteMode};
     let schema_vec = parse_schema_from_python(schema)?;
     let data_rows = py_rows_to_json(py, data, &schema_vec)?;
     let session = get_or_create_session();
@@ -478,7 +478,7 @@ fn write_json(
     path: &str,
     overwrite: bool,
 ) -> PyResult<()> {
-    use robin_sparkless::dataframe::{WriteFormat, WriteMode};
+    use robin_sparkless_polars::dataframe::{WriteFormat, WriteMode};
     let schema_vec = parse_schema_from_python(schema)?;
     let data_rows = py_rows_to_json(py, data, &schema_vec)?;
     let session = get_or_create_session();

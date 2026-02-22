@@ -214,11 +214,11 @@ def _robin_functions_module() -> Any:
     # PySpark uses countDistinct (camelCase) as well as count_distinct
     RobinFunctions.countDistinct = RobinFunctions.count_distinct  # type: ignore[attr-defined]
 
-    # Optional: first, rank (if crate exposes them)
+    # Optional: first, rank (if crate exposes them). rank(col) or rank(col, descending=False).
     if _first is not None:
         RobinFunctions.first = staticmethod(_first)  # type: ignore[attr-defined]
     if _rank is not None:
-        RobinFunctions.rank = staticmethod(_rank)  # type: ignore[attr-defined]
+        RobinFunctions.rank = staticmethod(_wrap1(_rank))  # type: ignore[attr-defined]
     def _data_type_to_str(dt: Any) -> str:
         """Convert DataType to crate type string (e.g. IntegerType() -> 'int')."""
         if isinstance(dt, str):
@@ -293,7 +293,7 @@ def _robin_functions_module() -> Any:
         )
 
     def _window_wrap(fn: Any) -> Any:
-        """Wrap crate window fn so result is RobinColumn; pass through args for lag/lead/ntile."""
+        """Wrap crate window fn so result is RobinColumn; pass through args for row_number, ntile, etc."""
 
         def _w(*args: Any, **kwargs: Any) -> Any:
             unwrapped = [_unwrap(a) for a in args]
@@ -301,11 +301,29 @@ def _robin_functions_module() -> Any:
 
         return _w
 
+    def _lag_w(col: Any, offset: int = 1, default: Any = None) -> Any:
+        """F.lag(col, offset=1, default=None). Crate may only accept (col); pass col only."""
+        try:
+            return _wrap_col(_lag(_unwrap(col), offset, default))
+        except TypeError:
+            try:
+                return _wrap_col(_lag(_unwrap(col), offset))
+            except TypeError:
+                return _wrap_col(_lag(_unwrap(col)))
+
+    def _lead_w(col: Any, offset: int = 1, default: Any = None) -> Any:
+        """F.lead(col, offset=1, default=None). Crate may only accept (col); pass col only."""
+        try:
+            return _wrap_col(_lead(_unwrap(col), offset, default))
+        except TypeError:
+            try:
+                return _wrap_col(_lead(_unwrap(col), offset))
+            except TypeError:
+                return _wrap_col(_lead(_unwrap(col)))
+
     for _wname, _wfn in (
         ("row_number", _row_number),
         ("percent_rank", _percent_rank),
-        ("lag", _lag),
-        ("lead", _lead),
         ("ntile", _ntile),
         ("cume_dist", _cume_dist),
         ("dense_rank", _dense_rank),
@@ -318,6 +336,15 @@ def _robin_functions_module() -> Any:
                 _wname,
                 staticmethod(lambda n=_wname: _window_stub(n)),  # type: ignore[attr-defined]
             )
+
+    if _lag is not None:
+        RobinFunctions.lag = staticmethod(_lag_w)  # type: ignore[attr-defined]
+    else:
+        RobinFunctions.lag = staticmethod(lambda: _window_stub("lag"))  # type: ignore[attr-defined]
+    if _lead is not None:
+        RobinFunctions.lead = staticmethod(_lead_w)  # type: ignore[attr-defined]
+    else:
+        RobinFunctions.lead = staticmethod(lambda: _window_stub("lead"))  # type: ignore[attr-defined]
 
     return RobinFunctions()
 

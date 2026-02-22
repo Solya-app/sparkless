@@ -3592,17 +3592,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "robin-sparkless"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6831ee035723487dcf4e722b420ea95a33ec114eaddb4a03fd96b17049f120fa"
-dependencies = [
- "robin-sparkless-core",
- "robin-sparkless-polars",
- "serde_json",
-]
-
-[[package]]
 name = "robin-sparkless-core"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3615,9 +3604,9 @@ dependencies = [
 
 [[package]]
 name = "robin-sparkless-polars"
-version = "0.15.1"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1682c2ec687ec5f662d3df6a0ccc1c2570498c5edcf4db0b0bf7346a7d889b4"
+checksum = "7c1002f44770737f6cfc0a196524137aca1fffdf0453585ca119a2141b09ea0d"
 dependencies = [
  "aes-gcm",
  "base64",
@@ -4022,7 +4011,7 @@ version = "0.1.0"
 dependencies = [
  "once_cell",
  "pyo3",
- "robin-sparkless",
+ "robin-sparkless-polars",
  "serde",
  "serde_json",
  "spark-ddl-parser",

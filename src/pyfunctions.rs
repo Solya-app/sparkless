@@ -3,8 +3,8 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
-use robin_sparkless::column::Column as RobinColumn;
-use robin_sparkless::functions;
+use robin_sparkless_polars::column::Column as RobinColumn;
+use robin_sparkless_polars::functions;
 
 use crate::pycolumn::{py_any_to_column, py_any_to_select_expr, PyColumn};
 use crate::pysortorder::PySortOrder;
