@@ -48,6 +48,8 @@ class DateTimeFunctions:
         """
         from sparkless.session import SparkSession
 
+        if getattr(SparkSession, "__name__", "") == "RobinSparkSession":
+            return
         if not SparkSession._has_active_session():
             raise RuntimeError(
                 f"Cannot perform {operation_name}: "

@@ -267,19 +267,31 @@ def _robin_functions_module() -> Any:
         else:
             setattr(RobinFunctions, _name, staticmethod(_sort_order_fallback(_name)))  # type: ignore[attr-defined]
     if _get_item is not None:
-        RobinFunctions.get_item = staticmethod(_get_item)  # type: ignore[attr-defined]
+        def _get_item_w(col: Any, key: Any, *args: Any, **kwargs: Any) -> Any:
+            return _wrap_col(_get_item(_unwrap(col), key, *args, **kwargs))
+        RobinFunctions.get_item = staticmethod(_get_item_w)  # type: ignore[attr-defined]
     if _is_null is not None:
-        RobinFunctions.is_null = staticmethod(_is_null)  # type: ignore[attr-defined]
+        RobinFunctions.is_null = staticmethod(_wrap1(_is_null))  # type: ignore[attr-defined]
     if _with_field is not None:
-        RobinFunctions.with_field = staticmethod(_with_field)  # type: ignore[attr-defined]
+        def _with_field_w(col: Any, name: Any, value: Any, *args: Any, **kwargs: Any) -> Any:
+            val = _unwrap(value) if hasattr(value, "_inner") else value
+            return _wrap_col(_with_field(_unwrap(col), name, val, *args, **kwargs))
+        RobinFunctions.with_field = staticmethod(_with_field_w)  # type: ignore[attr-defined]
     if _rlike is not None:
-        RobinFunctions.rlike = staticmethod(_rlike)  # type: ignore[attr-defined]
+        RobinFunctions.rlike = staticmethod(_wrap1(_rlike))  # type: ignore[attr-defined]
     if _fill is not None:
         RobinFunctions.fill = staticmethod(_fill)  # type: ignore[attr-defined]
     if _over is not None:
         def _over_w(col: Any, window: Any) -> Any:
             return _wrap_col(_over(_unwrap(col), window))
         RobinFunctions.over = staticmethod(_over_w)  # type: ignore[attr-defined]
+    else:
+        def _over_stub(col: Any, window: Any) -> Any:
+            raise NotImplementedError(
+                "over() is not implemented for the Robin backend. "
+                "See docs/robin_parity_matrix.md and tests/robin_skip_list.json."
+            )
+        RobinFunctions.over = staticmethod(_over_stub)  # type: ignore[attr-defined]
     if _isin is not None:
         RobinFunctions.isin = staticmethod(_isin)  # type: ignore[attr-defined]
 

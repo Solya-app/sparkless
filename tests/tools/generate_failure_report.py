@@ -202,7 +202,8 @@ def render_report(data: dict) -> str:
 
     # Section 4 – Other
     out.append("## 4. Other\n\n")
-    out.append(f"Failures not categorized as robin_sparkless or fix_sparkless: **{len(other)}**.\n\n")
+    out.append("Failures that did not match any robin_sparkless or fix_sparkless pattern (assertion/catalog/one-off): ")
+    out.append(f"**{len(other)}**.\n\n")
     if other:
         out.append("Sample (first 15):\n\n")
         for x in other[:15]:

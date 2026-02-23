@@ -6,8 +6,14 @@ Usage:
   python tests/tools/parse_robin_results.py results.txt -o tests/robin_results_parsed.json
 
 Reads a results file from run_all_tests.sh (Robin backend), extracts summary and
-FAILED/ERROR lines, categorizes each as robin_sparkless / fix_sparkless / other,
-and writes JSON for generate_failure_report.py.
+FAILED/ERROR lines, categorizes each failure, and writes JSON for generate_failure_report.py.
+
+Categories:
+  - robin_sparkless: Robin engine/crate semantics (collect, create_dataframe_from_rows,
+    SQL/join/union/order_by limits, "not implemented for the Robin backend", type/parity mismatches).
+  - fix_sparkless: Sparkless Python layer (missing F.*/Column/Session/Reader APIs, Row key naming,
+    catalog, context manager, create_schema, etc.).
+  - other: Unmatched (assertion/catalog/one-off).
 """
 
 from __future__ import annotations
@@ -19,80 +25,152 @@ import sys
 from pathlib import Path
 
 
-def _categorize(message: str) -> str:
+def _categorize(message: str, exception_type: str = "") -> str:
     """Categorize failure/error message as robin_sparkless, fix_sparkless, or other."""
     if not message:
         return "other"
+    msg = message
+    exc = exception_type or ""
     # robin_sparkless
-    if re.search(r"collect failed:", message):
+    if re.search(r"collect failed:", msg):
         return "robin_sparkless"
-    if re.search(r"create_dataframe_from_rows failed:", message):
+    if re.search(r"create_dataframe_from_rows failed:", msg):
         return "robin_sparkless"
-    if re.search(r"select expects Column or str|cannot convert to Column", message):
+    if re.search(r"select expects Column or str|cannot convert to Column", msg):
         return "robin_sparkless"
-    if re.search(r"Table or view .* not found", message):
+    if re.search(r"Table or view .* not found", msg):
         return "robin_sparkless"
-    if "AssertionError" in message and (
-        "tuple" in message and "set" in message
-        or "incompatible with expected type" in message
-        or "==" in message and "1234" in message
+    if "AssertionError" in exc and (
+        "tuple" in msg and "set" in msg
+        or "incompatible with expected type" in msg
+        or "==" in msg and "1234" in msg
     ):
         return "robin_sparkless"
-    # Join/union type coercion (Robin returns different type than PySpark)
-    if "AssertionError" in message and (
-        "'1234'" in message or "1234" in message and "==" in message
-        or "in {" in message and "assert " in message
+    if "AssertionError" in exc and (
+        "'1234'" in msg or "1234" in msg and "==" in msg
+        or "in {" in msg and "assert " in msg
     ):
         return "robin_sparkless"
-    if "cannot compare string with numeric" in message or "type String is incompatible with expected type" in message:
+    if "cannot compare string with numeric" in msg or "type String is incompatible with expected type" in msg:
+        return "robin_sparkless"
+    if "is not implemented for the Robin backend" in msg:
+        return "robin_sparkless"
+    if re.search(r"SQL failed:|SQL parse error|only SELECT|only INNER|only LEFT|only RIGHT|only FULL", msg):
+        return "robin_sparkless"
+    if "union failed:" in msg or "group_by failed:" in msg or "order_by failed:" in msg:
+        return "robin_sparkless"
+    if "schema failed:" in msg or "casting from" in msg and "not supported" in msg:
+        return "robin_sparkless"
+    if "Expected numeric type" in msg or "Expected LongType" in msg or "out of range integral" in msg:
+        return "robin_sparkless"
+    if "math domain error" in msg:
+        return "robin_sparkless"
+    if "join on expression" in msg and "not supported" in msg:
+        return "robin_sparkless"
+    if "unsupported join type:" in msg:
+        return "robin_sparkless"
+    if "DataFrames are not equivalent" in msg:
+        return "robin_sparkless"
+    if "select failed: not found: Column" in msg or "join failed: not found:" in msg:
+        return "robin_sparkless"
+    if "assert False" in msg:
         return "robin_sparkless"
     # fix_sparkless
-    if re.search(r"PyColumn.*has no attribute", message):
+    if re.search(r"PyColumn.*has no attribute", msg):
         return "fix_sparkless"
-    if re.search(r"RobinDataFrameReader.*option", message):
+    if re.search(r"RobinColumn.*is not callable", msg):
         return "fix_sparkless"
-    if re.search(r"RobinSparkSession.*stop", message):
+    if re.search(r"RobinFunctions.*has no attribute|'RobinFunctions' object has no attribute", msg):
         return "fix_sparkless"
-    if re.search(r"tuple.*cannot be converted to.*PyDict", message):
+    if re.search(r"module ['\"]sparkless\.sql\.functions['\"] has no attribute", msg):
         return "fix_sparkless"
-    if re.search(r"NotImplementedError.*GroupedData|GroupedData\.agg\(\) not yet", message):
+    if re.search(r"RobinDataFrameReader.*option", msg):
         return "fix_sparkless"
-    if re.search(r"RobinGroupedData.*pivot", message):
+    if re.search(r"RobinSparkSession.*stop", msg):
         return "fix_sparkless"
-    if re.search(r"module.*has no attribute ['\"]first['\"]", message):
+    if re.search(r"tuple.*cannot be converted to.*PyDict", msg):
         return "fix_sparkless"
-    if re.search(r"module.*has no attribute ['\"]rank['\"]", message):
+    if re.search(r"NotImplementedError.*GroupedData|GroupedData\.agg\(\) not yet", msg):
         return "fix_sparkless"
-    if re.search(r"PyColumn.*is not callable", message):
+    if re.search(r"RobinGroupedData.*pivot", msg):
         return "fix_sparkless"
-    if re.search(r"NoneType.*fields", message):
+    if re.search(r"module.*has no attribute ['\"]first['\"]", msg):
         return "fix_sparkless"
-    if "_has_active_session" in message:
+    if re.search(r"module.*has no attribute ['\"]rank['\"]", msg):
         return "fix_sparkless"
-    if "No active SparkSession" in message:
+    if re.search(r"PyColumn.*is not callable", msg):
         return "fix_sparkless"
-    if "Regex pattern did not match" in message or "can not infer schema from empty" in message or "createDataFrame requires schema" in message:
+    if re.search(r"NoneType.*fields", msg):
         return "fix_sparkless"
-    if re.search(r"PyColumn.*is not iterable", message):
+    if "_has_active_session" in msg:
         return "fix_sparkless"
-    if "RobinSparkSession" in message and ("_storage" in message or "stop" in message):
+    if "No active SparkSession" in msg:
         return "fix_sparkless"
-    # unsupported operand (reverse operators) -> fix_sparkless
-    if re.search(r"unsupported operand type.*PyColumn", message):
+    if "Regex pattern did not match" in msg or "can not infer schema from empty" in msg or "createDataFrame requires schema" in msg:
         return "fix_sparkless"
-    # udf / window stubs (we expose them; if tests still fail it may be NotImplementedError -> parity)
-    if re.search(r"module.*has no attribute ['\"]udf['\"]", message):
+    if re.search(r"PyColumn.*is not iterable", msg):
         return "fix_sparkless"
-    if re.search(r"module.*has no attribute ['\"]row_number['\"]", message) or re.search(r"module.*has no attribute ['\"]percent_rank['\"]", message):
+    if "RobinSparkSession" in msg and ("_storage" in msg or "stop" in msg):
         return "fix_sparkless"
-    if "NotImplementedError" in message and ("row_number" in message or "percent_rank" in message or "lag" in message or "lead" in message or "ntile" in message or "not implemented for the Robin backend" in message):
+    if re.search(r"unsupported operand type.*PyColumn", msg):
+        return "fix_sparkless"
+    if re.search(r"module.*has no attribute ['\"]udf['\"]", msg):
+        return "fix_sparkless"
+    if re.search(r"module.*has no attribute ['\"]row_number['\"]", msg) or re.search(r"module.*has no attribute ['\"]percent_rank['\"]", msg):
+        return "fix_sparkless"
+    if "'str' object cannot be converted to 'PyDict'" in msg or "createDataFrame_from_pandas" in msg:
+        return "fix_sparkless"
+    if re.search(r"Key ['\"].*['\"] not found in row", msg):
+        return "fix_sparkless"
+    if re.search(r"Database .* does not exist", msg):
+        return "fix_sparkless"
+    if "_get_available_columns" in msg or "_materialized" in msg:
+        return "fix_sparkless"
+    if "log() takes 1 positional" in msg or "takes 0 positional arguments but 2" in msg:
+        return "fix_sparkless"
+    if "context manager protocol" in msg and "RobinSparkSession" in msg:
+        return "fix_sparkless"
+    if "Robin save_as_table" in msg or "save_as_table" in msg and "missing columns" in msg:
+        return "fix_sparkless"
+    if "isin requires a list" in msg:
+        return "fix_sparkless"
+    if "NoneType" in msg and "create_schema" in msg:
+        return "fix_sparkless"
+    if "'ColumnOperation' object cannot be converted to 'PyColumn'" in msg:
+        return "fix_sparkless"
+    if "'AggregateFunction' object cannot be converted to 'PyColumn'" in msg:
+        return "fix_sparkless"
+    if "'dict' object cannot be converted to 'PyColumn'" in msg:
+        return "fix_sparkless"
+    if "StringType" in msg and "element_type" in msg:
+        return "fix_sparkless"
+    if "RobinPivotedGroupedData" in msg and "has no attribute" in msg:
+        return "fix_sparkless"
+    if "RobinSparkSessionBuilder" in msg and "is not callable" in msg:
+        return "fix_sparkless"
+    if "RobinDataFrameWriter" in msg and "has no attribute" in msg:
+        return "fix_sparkless"
+    if "RobinSparkSession" in msg and "has no attribute" in msg:
+        return "fix_sparkless"
+    if "_robin_functions_module" in msg and "missing" in msg and "positional" in msg:
+        return "fix_sparkless"
+    if "Cast column not found" in msg or "cast failed:" in msg:
         return "robin_sparkless"
-    # createDataFrame / pandas
-    if "'str' object cannot be converted to 'PyDict'" in message or "createDataFrame_from_pandas" in message:
-        return "fix_sparkless"
-    if "assert False" in message:
-        # Often assertion on result type or value (e.g. join coercion) -> treat as parity for now
+    if "with_column failed:" in msg or "agg failed:" in msg:
         return "robin_sparkless"
+    if "Expected hour=" in msg or "substr(" in msg and "failed for row" in msg:
+        return "robin_sparkless"
+    if "not supported between instances of 'str' and 'int'" in msg or "can only concatenate str" in msg:
+        return "robin_sparkless"
+    if "Expected table not found error" in msg:
+        return "robin_sparkless"
+    # Assertion / parity (value or type mismatch; test expected different result)
+    if msg.startswith("assert ") and ("==" in msg or " is " in msg or " is not " in msg or " in " in msg or " in {" in msg or " not " in msg or " < " in msg or " > " in msg):
+        return "robin_sparkless"
+    if "DID NOT RAISE" in msg:
+        return "robin_sparkless"
+    if "argument of type 'NoneType' is not iterable" in msg:
+        return "fix_sparkless"
     return "other"
 
 
@@ -142,7 +220,7 @@ def parse_results(results_path: str | Path) -> dict:
             exception_type = rest or "Unknown"
             message = rest
         phase = "unit" if test_id.startswith("tests/unit/") else "parity"
-        category = _categorize(message)
+        category = _categorize(message, exception_type)
         failures.append({
             "kind": kind,
             "test_id": test_id,

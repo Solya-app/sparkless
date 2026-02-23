@@ -27,6 +27,8 @@ class ExpressionFunctions:
         """
         from sparkless.session import SparkSession
 
+        if getattr(SparkSession, "__name__", "") == "RobinSparkSession":
+            return
         # Use getActiveSession() for PySpark compatibility
         if SparkSession.getActiveSession() is None:
             raise RuntimeError(
