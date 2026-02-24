@@ -1,50 +1,64 @@
 # Test Run Analysis (8 workers, no archive)
 
-**Run:** `pytest tests -n 8 -v --tb=no --ignore=tests/archive`  
-**Result:** 1559 failed, 995 passed, 21 skipped, 1 xpassed in **55.65s**  
+## Latest run
+
+**Run:** `pytest tests -n 8 -v --tb=short --ignore=tests/archive`  
+**Result:** **1555 failed**, **999 passed**, 21 skipped, 1 xpassed in **62.68s**  
 **Workers:** 8  
 **Total collected:** 2576 items  
+
+Dominant failure modes: **cannot convert to Column** (501), **select expects Column or str** (216), **udf not implemented** (176), **RobinColumn is not callable** (162), **join on expression not supported** (100). **KeyError 'avg(Value)'** (40) — agg alias may not be in the path used by parity tests (e.g. need `maturin develop` so extension uses F.avg alias). **KeyError 'count'** (14) — count() alias similarly.
 
 ---
 
 ## Summary
 
-| Outcome | Count |
+| Outcome | Count (latest) |
 |--------|--------|
-| Passed  | 995  |
-| Failed  | 1559 |
+| Passed  | 999  |
+| Failed  | 1555 |
 | Skipped | 21   |
 | XPassed | 1    |
 
-About **61%** of non-archive tests fail. Failures are almost entirely due to **Robin backend** limitations and **Sparkless↔Robin** integration (Column conversion, missing F.*, SQL/API parity).
+About **61%** of non-archive tests still fail. Remaining failures: Robin backend not implemented (udf, explode, expr, struct, join-on-expression, etc.), ColumnOperation / list not converted to Robin column, select/filter receiving wrong types, and SQL/catalog limits.
 
 ---
 
-## Top failure categories (by error type)
+## Top failure categories (by error type, latest run)
 
 | Count | Error / category |
 |------|-------------------|
-| 305 | `ValueError: cannot convert to Column` — Python/Sparkless Column not converted to RobinColumn where Robin expects it |
-| 146 | `ValueError: select expects Column or str` — select() given something other than Column or string (e.g. list of columns, expression object) |
-| 88  | `NotImplementedError: udf is not implemented for the Robin backend` |
-| 81  | `TypeError: 'RobinColumn' object is not callable` — F.* returning RobinColumn used as callable (e.g. F.xxx used as F.xxx()) |
-| 47  | `NotImplementedError: explode is not implemented` |
-| 37  | `AttributeError: 'RobinFunctions' object has no attribute 'rlike'` |
-| 34  | `AssertionError: DataFrames are not equivalent` — parity / result mismatch |
-| 32  | `NotImplementedError: struct is not implemented` |
-| 31  | `AttributeError: 'RobinFunctions' object has no attribute 'with_field'` |
-| 28  | `KeyError: "Key 'avg(Value)' not found in row"` — aggregation alias/name mismatch (Robin uses different naming) |
-| 27  | `NotImplementedError: row_number is not implemented` |
-| 26  | `NotImplementedError: posexplode is not implemented` |
-| 26  | `NotImplementedError: expr is not implemented` |
-| 23  | `ValueError: SQL failed: only SELECT, CREATE SCHEMA/DATABASE, and DROP TABLE/VIEW/SCHEMA are supported` |
-| 21  | `TypeError: 'ColumnOperation' object cannot be converted to 'PyColumn'` |
-| 19  | `NotImplementedError: join on expression ... not supported` (join on df1.a == df2.b) |
-| 14  | `NotImplementedError: array_distinct is not implemented` |
-| 13  | `AttributeError: module 'sparkless.sql.functions' has no attribute 'approx_count_distinct'` |
-| 12  | `AttributeError: ... has no attribute 'input_file_name'` |
+| 501 | `ValueError: cannot convert to Column` — Sparkless ColumnOperation/list/expr passed where Robin expects Column or str |
+| 216 | `ValueError: select expects Column or str` — non-Column/non-str in select (list, ColumnOperation, etc.) |
+| 176 | `NotImplementedError: udf is not implemented for the Robin backend` |
+| 162 | `TypeError: 'RobinColumn' object is not callable` — F.* used as callable (e.g. selectExpr, replace) |
+| 100 | `NotImplementedError: join on expression (e.g. df1.a == df2.b) is not supported` |
+| 94  | `NotImplementedError: explode is not implemented` |
+| 74  | `NotImplementedError: rlike is not implemented` |
+| 68  | `AssertionError: DataFrames are not equivalent` |
+| 64  | `NotImplementedError: struct is not implemented` |
+| 62  | `NotImplementedError: with_field is not implemented` |
+| 54  | `NotImplementedError: row_number is not implemented` |
+| 52  | `NotImplementedError: posexplode is not implemented` |
+| 52  | `NotImplementedError: expr is not implemented` |
+| 46  | `ValueError: SQL failed: only SELECT, CREATE SCHEMA/DATABASE, and DROP TABLE/VIEW/SCHEMA are supported` |
+| 42  | `TypeError: 'ColumnOperation' object cannot be converted to 'PyColumn'` |
+| 40  | `KeyError: "Key 'avg(Value)' not found in row"` — F.avg() in agg path not aliased in built extension |
+| 28  | `NotImplementedError: array_distinct is not implemented` |
+| 26  | `NotImplementedError: approx_count_distinct is not implemented` |
+| 24  | `NotImplementedError: input_file_name is not implemented` |
+| 20  | `ValueError: select failed: not found: Column 'E1-Extract' not found` (struct/expr naming) |
+| 20  | `ValueError: get_item key must be int (array index) or str (map key)` |
+| 18  | `ValueError: collect failed: field not found: E1` |
+| 18  | `TypeError: log() takes 1 positional arguments but 2 were given` |
+| 16  | `KeyError: "Key 'NaMe' not found in row"` (case sensitivity) |
+| 14  | `ValueError: select failed: not found: Column 'map_col' not found` (create_map alias) |
+| 14  | `NotImplementedError: stddev is not implemented` |
+| 14  | `NotImplementedError: over() is not implemented` |
+| 14  | `KeyError: "Key 'count' not found in row"` |
+| 14  | `AssertionError: assert (None == 0.0)` (fillna/agg) |
 
-Additional notable categories: missing F.* (`stddev`, `array_contains`, `posexplode_outer`, `date_trunc`, string/array functions), SQL (UPDATE/DELETE, JOIN syntax, DESCRIBE DETAIL), `KeyError` for aggregation/row keys, and assertion/type mismatches (datetime/date, schema, None vs value).
+Additional: SQL (UPDATE/DELETE, JOIN types), join type leftsemi, isin/list values, datetime/type mismatches, case sensitivity, table/view not found, union column order.
 
 ---
 
@@ -103,5 +117,12 @@ Additional notable categories: missing F.* (`stddev`, `array_contains`, `posexpl
    - Then UDF, explode, struct, expr, and join-on-expression for broader parity.
 
 ---
+
+## Run / analysis notes
+
+- **Command used:** `python -m pytest tests -n 8 -v --tb=short --ignore=tests/archive`
+- **Artifact:** Full output was written to the agent tools path; this doc summarizes failure reasons extracted from it.
+- **Agg aliases:** If `KeyError 'avg(Value)'` / `'count'` persist after code changes, ensure the Robin extension is rebuilt and loaded (e.g. `maturin develop` in the project root) so Python uses the updated F.avg/F.count alias logic.
+- **Priority fixes by impact:** (1) Column conversion — cannot convert to Column + select expects Column or str (~717); (2) RobinColumn callable / ColumnOperation → PyColumn (~204); (3) agg row keys (avg/count) once extension is current; (4) known-not-implemented (udf, explode, expr, join-on-expr, etc.) via skip list or stubs.
 
 *Generated from test run output; failure counts are approximate from aggregated error messages.*

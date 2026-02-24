@@ -256,6 +256,27 @@ impl PyColumn {
     }
 }
 
+/// True if s looks like a simple column name (identifier), not an expression repr.
+fn is_simple_column_name(s: &str) -> bool {
+    let s = s.trim();
+    if s.is_empty() || s == "False" || s == "True" {
+        return false;
+    }
+    if s.contains("object at") && s.contains('<') {
+        return false;
+    }
+    if s.contains("CASE WHEN") || s.contains(" OVER ") || s.contains("()") {
+        return false;
+    }
+    if s.contains('(') || s.contains(')') || s.contains('=') || s.contains('>') || s.contains('<') {
+        return false;
+    }
+    if s != s.trim() || s.contains(' ') {
+        return false;
+    }
+    true
+}
+
 /// Convert PyAny to column/expression for select. Str = col(name), PyColumn = as-is.
 /// Also accepts RobinColumn (Python wrapper with _inner), and Sparkless Column (has .name).
 pub fn py_any_to_select_expr(obj: &Bound<'_, PyAny>) -> PyResult<RobinColumn> {
@@ -272,11 +293,13 @@ pub fn py_any_to_select_expr(obj: &Bound<'_, PyAny>) -> PyResult<RobinColumn> {
             }
         }
     }
-    // Sparkless Column (from sparkless.functions) has .name -> treat as col(name)
+    // Sparkless Column (simple) has .name -> treat as col(name). Skip ColumnOperation (expr repr as .name).
     if obj.hasattr("name").unwrap_or(false) {
         if let Ok(name) = obj.getattr("name") {
             if let Ok(s) = name.extract::<String>() {
-                return Ok(functions::col(&s));
+                if is_simple_column_name(&s) {
+                    return Ok(functions::col(&s));
+                }
             }
         }
     }
@@ -348,11 +371,13 @@ pub fn py_any_to_column(obj: &Bound<'_, PyAny>) -> PyResult<RobinColumn> {
         let repr = format!("({})", parts.join(", "));
         return Ok(functions::lit_str(&repr));
     }
-    // Sparkless Column (has .name) -> col(name) for expression context
+    // Sparkless Column (simple .name only; ColumnOperation has expr repr as .name)
     if obj.hasattr("name").unwrap_or(false) {
         if let Ok(name) = obj.getattr("name") {
             if let Ok(s) = name.extract::<String>() {
-                return Ok(functions::col(&s));
+                if is_simple_column_name(&s) {
+                    return Ok(functions::col(&s));
+                }
             }
         }
     }

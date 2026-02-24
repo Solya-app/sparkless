@@ -50,6 +50,17 @@ def _robin_functions_module() -> Any:
     def _wrap_col(col: Any) -> Any:
         return RobinColumn(col) if col is not None else None
 
+    def _agg_alias_name(col: Any, agg: str) -> str:
+        """PySpark-style alias for agg(col), e.g. avg(Value), count(Value)."""
+        if isinstance(col, str):
+            return f"{agg}({col})"
+        name = getattr(col, "name", None)
+        if isinstance(name, str) and name and "(" not in name and " " not in name:
+            return f"{agg}({name})"
+        if agg == "count":
+            return "count"
+        return f"{agg}(col)"
+
     def _wrap1(f: Any) -> Any:
         """Wrap f so first arg is unwrapped and result is wrapped."""
         def _w(col: Any, *args: Any, **kwargs: Any) -> Any:
@@ -82,7 +93,7 @@ def _robin_functions_module() -> Any:
 
     def _sum_w(col: Any, *args: Any) -> Any:
         """Sum: use first column only so Rust sum(col) is not given extra args."""
-        return _wrap_col(_r.sum(_unwrap(col)))
+        return _wrap_col(_r.sum(_unwrap(col))).alias(_agg_alias_name(col, "sum"))
 
     def _math_stub(name: str) -> Any:
         def _stub(*args: Any, **kwargs: Any) -> Any:
@@ -185,23 +196,32 @@ def _robin_functions_module() -> Any:
         when = staticmethod(_when_w)
         when_otherwise = staticmethod(_r.when_otherwise)
 
+        def _avg_w(col: Any) -> Any:
+            return _wrap_col(_r.avg(_unwrap(col))).alias(_agg_alias_name(col, "avg"))
+
+        def _count_w(col: Any) -> Any:
+            return _wrap_col(_r.count(_unwrap(col))).alias(_agg_alias_name(col, "count"))
+
+        def _mean_w(col: Any) -> Any:
+            return _wrap_col(_r.mean(_unwrap(col))).alias(_agg_alias_name(col, "avg"))
+
         # Aggregation (sum: single-arg only so Rust sum(col) is not given 2 args)
         sum_ = staticmethod(_sum_w)
-        count = staticmethod(_wrap1(_r.count))
-        avg = staticmethod(_wrap1(_r.avg))
-        mean = staticmethod(_wrap1(_r.mean))
+        count = staticmethod(_count_w)
+        avg = staticmethod(_avg_w)
+        mean = staticmethod(_mean_w)
 
         def _min_w(col: Any, *args: Any) -> Any:
             result = _wrap_col(_r.min(_unwrap(col)))
             if args and args[0] is not None and isinstance(args[0], str):
                 return result.alias(args[0])
-            return result
+            return result.alias(_agg_alias_name(col, "min"))
 
         def _max_w(col: Any, *args: Any) -> Any:
             result = _wrap_col(_r.max(_unwrap(col)))
             if args and args[0] is not None and isinstance(args[0], str):
                 return result.alias(args[0])
-            return result
+            return result.alias(_agg_alias_name(col, "max"))
 
         min_ = staticmethod(_min_w)
         max_ = staticmethod(_max_w)

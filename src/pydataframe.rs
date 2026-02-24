@@ -261,6 +261,11 @@ impl PyGroupedData {
             .map(Self::from_robin_df)
             .map_err(|e| PyValueError::new_err(format!("max failed: {e}")))
     }
+
+    /// Mean (avg) of column per group. PySpark: groupBy(...).mean("col") — same output name as avg.
+    fn mean(&self, column: &str) -> PyResult<PyDataFrame> {
+        self.avg(column)
+    }
 }
 
 impl PyGroupedData {

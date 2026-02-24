@@ -30,15 +30,29 @@ def _to_robin_select_item(c: Any) -> Any:
         inner = getattr(c, "_inner", None)
         if inner is not None:
             return inner
-    # Sparkless Column from sparkless.functions has .name -> use Robin F.col(name)
+    # Sparkless Column (not ColumnOperation) has simple .name -> use Robin F.col(name).
+    # Do NOT use .name for ColumnOperation: its .name is an expression string (e.g. "CASE WHEN...").
     if hasattr(c, "name"):
         try:
             name = getattr(c, "name")
-            if isinstance(name, str):
+            if isinstance(name, str) and _is_simple_column_name(name):
+                # Column with a single identifier (no operation)
                 from ._robin_functions import get_robin_functions
                 return _unwrap(get_robin_functions().col(name))
         except Exception:
             pass
+        # Expression-like .name (ColumnOperation): reject with clear message instead of passing to Rust.
+        if isinstance(getattr(c, "name", None), str) and not _is_simple_column_name(getattr(c, "name", "")):
+            raise ValueError(
+                "Expression columns (e.g. from operations or when/otherwise) are not yet supported "
+                "in select/filter for the Robin backend. Use a column name string or F.col('name')."
+            )
+    # ColumnOperation has .column, .operation, .value
+    if hasattr(c, "column") or (getattr(c, "operation", None) is not None and hasattr(c, "value")):
+        raise ValueError(
+            "Expression columns (ColumnOperation) are not yet supported in select/filter for the Robin backend. "
+            "Use F.col('name') or a column name string."
+        )
     return _unwrap(c)
 
 
@@ -49,6 +63,13 @@ def _is_simple_column_name(raw_name: Any) -> bool:
     if raw_name in ("False", "True"):
         return False
     if raw_name.strip().startswith("<") and "object at" in raw_name:
+        return False
+    # Reject expression-like names (ColumnOperation._generate_name output)
+    if "CASE WHEN" in raw_name or " OVER " in raw_name or "()" in raw_name:
+        return False
+    if "(" in raw_name or ")" in raw_name or "=" in raw_name or ">" in raw_name or "<" in raw_name:
+        return False
+    if raw_name.strip() != raw_name or " " in raw_name:
         return False
     return True
 
@@ -585,30 +606,28 @@ class RobinDataFrame:
             return RobinDataFrame(self._inner.order_by_exprs(sort_orders))
         return RobinDataFrame(self._inner.order_by(col_names, asc))
 
+    def _col_name_for_group_by(self, item: Any) -> str:
+        """Get a simple column name for groupBy; raise if expression-like."""
+        if isinstance(item, str):
+            return item
+        unwrapped = _unwrap(item)
+        name = getattr(unwrapped, "name", str(unwrapped)) if hasattr(unwrapped, "name") else str(unwrapped)
+        if not _is_simple_column_name(name):
+            raise ValueError(
+                "groupBy with expression columns is not yet supported for the Robin backend. "
+                "Use column name strings or F.col('name')."
+            )
+        return name
+
     def groupBy(self, *cols: Any) -> "RobinGroupedData":
         """Group by columns. Flattens list/tuple so groupBy([a, b]) works like groupBy(a, b)."""
         col_names: List[str] = []
         for c in cols:
             if isinstance(c, (list, tuple)):
                 for item in c:
-                    if isinstance(item, str):
-                        col_names.append(item)
-                    else:
-                        item_unwrapped = _unwrap(item)
-                        col_names.append(
-                            getattr(item_unwrapped, "name", str(item_unwrapped))
-                            if hasattr(item_unwrapped, "name")
-                            else str(item_unwrapped)
-                        )
-            elif isinstance(c, str):
-                col_names.append(c)
+                    col_names.append(self._col_name_for_group_by(item))
             else:
-                c_unwrapped = _unwrap(c)
-                col_names.append(
-                    getattr(c_unwrapped, "name", str(c_unwrapped))
-                    if hasattr(c_unwrapped, "name")
-                    else str(c_unwrapped)
-                )
+                col_names.append(self._col_name_for_group_by(c))
         return RobinGroupedData(self._inner.group_by(col_names))
 
     groupby = groupBy  # PySpark alias
@@ -964,10 +983,10 @@ class RobinGroupedData:
 
     def mean(self, *cols: Any) -> RobinDataFrame:
         """Mean (avg) per group. PySpark: groupBy(...).mean('a', 'b') or .mean()."""
-        mean_fn = getattr(self._inner, "mean", None)
-        if mean_fn is not None:
-            return RobinDataFrame(mean_fn(*cols))
-        # Fallback: agg(F.avg(col) for each col)
+        # Single string column: use Rust mean() so output is aliased as avg(column).
+        if len(cols) == 1 and isinstance(cols[0], str):
+            return RobinDataFrame(self._inner.mean(cols[0]))
+        # Multiple columns: agg(F.avg(col) for each col). Crate must preserve alias on each.
         from ._robin_functions import get_robin_functions
         F = get_robin_functions()
         if cols:
