@@ -1,10 +1,10 @@
-//! PyO3 wrapper for robin_sparkless_polars::column::Column.
+//! PyO3 wrapper for robin_sparkless::column::Column.
 //! PyColumn holds a Robin Column; all expression logic is delegated to Robin.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use robin_sparkless_polars::column::Column as RobinColumn;
-use robin_sparkless_polars::functions;
+use robin_sparkless::column::Column as RobinColumn;
+use robin_sparkless::functions;
 
 /// Python wrapper for Robin's Column. Delegates all logic to Robin.
 #[pyclass(subclass)]
@@ -257,7 +257,7 @@ impl PyColumn {
 }
 
 /// Convert PyAny to column/expression for select. Str = col(name), PyColumn = as-is.
-/// Also accepts RobinColumn (Python wrapper with _inner).
+/// Also accepts RobinColumn (Python wrapper with _inner), and Sparkless Column (has .name).
 pub fn py_any_to_select_expr(obj: &Bound<'_, PyAny>) -> PyResult<RobinColumn> {
     if let Ok(py_col) = obj.extract::<PyRef<'_, PyColumn>>() {
         return Ok(py_col.as_robin().clone());
@@ -269,6 +269,14 @@ pub fn py_any_to_select_expr(obj: &Bound<'_, PyAny>) -> PyResult<RobinColumn> {
         if let Ok(inner) = obj.getattr("_inner") {
             if let Ok(py_col) = inner.extract::<PyRef<'_, PyColumn>>() {
                 return Ok(py_col.as_robin().clone());
+            }
+        }
+    }
+    // Sparkless Column (from sparkless.functions) has .name -> treat as col(name)
+    if obj.hasattr("name").unwrap_or(false) {
+        if let Ok(name) = obj.getattr("name") {
+            if let Ok(s) = name.extract::<String>() {
+                return Ok(functions::col(&s));
             }
         }
     }
@@ -339,6 +347,14 @@ pub fn py_any_to_column(obj: &Bound<'_, PyAny>) -> PyResult<RobinColumn> {
             .collect();
         let repr = format!("({})", parts.join(", "));
         return Ok(functions::lit_str(&repr));
+    }
+    // Sparkless Column (has .name) -> col(name) for expression context
+    if obj.hasattr("name").unwrap_or(false) {
+        if let Ok(name) = obj.getattr("name") {
+            if let Ok(s) = name.extract::<String>() {
+                return Ok(functions::col(&s));
+            }
+        }
     }
     Err(PyValueError::new_err("cannot convert to Column".to_string()))
 }

@@ -3592,10 +3592,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "robin-sparkless-core"
-version = "0.15.0"
+name = "robin-sparkless"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f9b5bfab9f392c3423ec3081104e87a8248883926680d8e31defa3f06d299e5"
+checksum = "efc3f40bb807f81bbc80f871e4b8f9477b3e521a785a2b6608e029160124be77"
+dependencies = [
+ "robin-sparkless-core",
+ "robin-sparkless-polars",
+ "serde_json",
+]
+
+[[package]]
+name = "robin-sparkless-core"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d3eac26da8ff16443cc2baa15561ca75c60f45f1032eb40e3e54020f3d984a3"
 dependencies = [
  "chrono",
  "serde",
@@ -3604,9 +3615,9 @@ dependencies = [
 
 [[package]]
 name = "robin-sparkless-polars"
-version = "0.15.2"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c1002f44770737f6cfc0a196524137aca1fffdf0453585ca119a2141b09ea0d"
+checksum = "fd14a2812ff9a0032c459838437a7c4e96c2dd05c1ffa0946f204226b04c3a4e"
 dependencies = [
  "aes-gcm",
  "base64",
@@ -3997,9 +4008,9 @@ checksum = "9d6f9626159c0e181f8c2449788ff754d54a93bdec0c09027d5098845565aee1"
 
 [[package]]
 name = "spark-sql-parser"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15d95ede8b19aa97bf4e382e65263ef22a0e581d5b57fd599311415216e7ea50"
+checksum = "73c6efeedbbe7030dd42376eacb1084d38e88571bdff6a54e5a66f5705f6a9dd"
 dependencies = [
  "sqlparser 0.61.0",
  "thiserror",
@@ -4011,7 +4022,7 @@ version = "0.1.0"
 dependencies = [
  "once_cell",
  "pyo3",
- "robin-sparkless-polars",
+ "robin-sparkless",
  "serde",
  "serde_json",
  "spark-ddl-parser",

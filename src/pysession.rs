@@ -1,9 +1,9 @@
-//! PyO3 wrapper for robin_sparkless_polars::session::SparkSession.
+//! PyO3 wrapper for robin_sparkless::session::SparkSession.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use robin_sparkless_polars::session::SparkSession as InnerSession;
-use robin_sparkless_polars::DataFrame as RobinDataFrame;
+use robin_sparkless::session::SparkSession as InnerSession;
+use robin_sparkless::DataFrame as RobinDataFrame;
 
 use crate::pydataframe::PyDataFrame;
 
@@ -70,7 +70,7 @@ impl PySparkSession {
         let data_rows = crate::py_rows_to_json(py, data.as_ref(), &schema_vec)?;
         let df = self
             .inner
-            .create_dataframe_from_rows(data_rows, schema_vec)
+            .create_dataframe_from_rows(data_rows, schema_vec, false)
             .map_err(|e| PyValueError::new_err(format!("create_dataframe_from_rows failed: {e}")))?;
         Ok(PyDataFrame::from_robin(df))
     }

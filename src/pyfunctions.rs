@@ -3,8 +3,8 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
-use robin_sparkless_polars::column::Column as RobinColumn;
-use robin_sparkless_polars::functions;
+use robin_sparkless::column::Column as RobinColumn;
+use robin_sparkless::functions;
 
 use crate::pycolumn::{py_any_to_column, py_any_to_select_expr, PyColumn};
 use crate::pysortorder::PySortOrder;
@@ -211,7 +211,7 @@ pub fn floor(col: &Bound<'_, PyAny>) -> PyResult<PyColumn> {
 #[pyo3(signature = (col, decimals=0))]
 pub fn round(col: &Bound<'_, PyAny>, decimals: u32) -> PyResult<PyColumn> {
     let c = py_any_to_select_expr(col)?;
-    Ok(PyColumn::from_robin(functions::round(&c, decimals)))
+    Ok(PyColumn::from_robin(functions::round(&c, decimals as i32)))
 }
 
 /// F.sqrt(col)

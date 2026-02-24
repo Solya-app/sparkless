@@ -8,10 +8,10 @@ use once_cell::sync::OnceCell;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyList, PyTuple};
-use robin_sparkless_polars::delta;
-use robin_sparkless_polars::schema::{DataType as RobinDataType, StructType as RobinStructType};
-use robin_sparkless_polars::session::SparkSession as InnerSession;
-use robin_sparkless_polars::{DataFrame as RobinDataFrame, SaveMode};
+use robin_sparkless::delta;
+use robin_sparkless::schema::{DataType as RobinDataType, StructType as RobinStructType};
+use robin_sparkless::session::SparkSession as InnerSession;
+use robin_sparkless::{DataFrame as RobinDataFrame, SaveMode};
 use serde_json::Value as JsonValue;
 use spark_ddl_parser::{parse_ddl_schema as parse_ddl_rs, StructType as DDLStructType};
 use std::collections::HashMap;
@@ -265,7 +265,7 @@ fn register_temp_view(py: Python<'_>, name: &str, data: &Bound<'_, PyAny>, schem
     let data_rows = py_rows_to_json(py, data, &schema_vec)?;
     let session = get_or_create_session();
     let df = session
-        .create_dataframe_from_rows(data_rows, schema_vec)
+        .create_dataframe_from_rows(data_rows, schema_vec, false)
         .map_err(|e| PyValueError::new_err(format!("Robin create_dataframe_from_rows: {e}")))?;
     session.create_or_replace_temp_view(name, df);
     Ok(())
@@ -278,7 +278,7 @@ fn register_global_temp_view(py: Python<'_>, name: &str, data: &Bound<'_, PyAny>
     let data_rows = py_rows_to_json(py, data, &schema_vec)?;
     let session = get_or_create_session();
     let df = session
-        .create_dataframe_from_rows(data_rows, schema_vec)
+        .create_dataframe_from_rows(data_rows, schema_vec, false)
         .map_err(|e| PyValueError::new_err(format!("Robin create_dataframe_from_rows: {e}")))?;
     session.create_or_replace_global_temp_view(name, df);
     Ok(())
@@ -322,7 +322,7 @@ fn save_as_table(
     let data_rows = py_rows_to_json(py, data, &schema_vec)?;
     let session = get_or_create_session();
     let df = session
-        .create_dataframe_from_rows(data_rows, schema_vec)
+        .create_dataframe_from_rows(data_rows, schema_vec, false)
         .map_err(|e| PyValueError::new_err(format!("Robin create_dataframe_from_rows: {e}")))?;
     let save_mode = match mode.to_lowercase().as_str() {
         "overwrite" => SaveMode::Overwrite,
@@ -420,12 +420,12 @@ fn write_parquet(
     path: &str,
     overwrite: bool,
 ) -> PyResult<()> {
-    use robin_sparkless_polars::dataframe::{WriteFormat, WriteMode};
+    use robin_sparkless::dataframe::{WriteFormat, WriteMode};
     let schema_vec = parse_schema_from_python(schema)?;
     let data_rows = py_rows_to_json(py, data, &schema_vec)?;
     let session = get_or_create_session();
     let df = session
-        .create_dataframe_from_rows(data_rows, schema_vec)
+        .create_dataframe_from_rows(data_rows, schema_vec, false)
         .map_err(|e| PyValueError::new_err(format!("Robin create_dataframe_from_rows: {e}")))?;
     let mode = if overwrite {
         WriteMode::Overwrite
@@ -449,12 +449,12 @@ fn write_csv(
     path: &str,
     overwrite: bool,
 ) -> PyResult<()> {
-    use robin_sparkless_polars::dataframe::{WriteFormat, WriteMode};
+    use robin_sparkless::dataframe::{WriteFormat, WriteMode};
     let schema_vec = parse_schema_from_python(schema)?;
     let data_rows = py_rows_to_json(py, data, &schema_vec)?;
     let session = get_or_create_session();
     let df = session
-        .create_dataframe_from_rows(data_rows, schema_vec)
+        .create_dataframe_from_rows(data_rows, schema_vec, false)
         .map_err(|e| PyValueError::new_err(format!("Robin create_dataframe_from_rows: {e}")))?;
     let mode = if overwrite {
         WriteMode::Overwrite
@@ -478,12 +478,12 @@ fn write_json(
     path: &str,
     overwrite: bool,
 ) -> PyResult<()> {
-    use robin_sparkless_polars::dataframe::{WriteFormat, WriteMode};
+    use robin_sparkless::dataframe::{WriteFormat, WriteMode};
     let schema_vec = parse_schema_from_python(schema)?;
     let data_rows = py_rows_to_json(py, data, &schema_vec)?;
     let session = get_or_create_session();
     let df = session
-        .create_dataframe_from_rows(data_rows, schema_vec)
+        .create_dataframe_from_rows(data_rows, schema_vec, false)
         .map_err(|e| PyValueError::new_err(format!("Robin create_dataframe_from_rows: {e}")))?;
     let mode = if overwrite {
         WriteMode::Overwrite
@@ -511,9 +511,9 @@ fn write_delta(
     let data_rows = py_rows_to_json(py, data, &schema_vec)?;
     let session = get_or_create_session();
     let df = session
-        .create_dataframe_from_rows(data_rows, schema_vec)
+        .create_dataframe_from_rows(data_rows, schema_vec, false)
         .map_err(|e| PyValueError::new_err(format!("Robin create_dataframe_from_rows: {e}")))?;
-    df.write_delta(path, overwrite).map_err(|e| {
+    df.write_delta(path, overwrite, false).map_err(|e| {
         PyValueError::new_err(format!("Robin write_delta failed: {e}"))
     })?;
     Ok(())

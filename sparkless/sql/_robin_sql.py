@@ -14,9 +14,32 @@ from ..robin.schema_ser import serialize_schema, schema_from_robin_list
 from ..core.schema_inference import SchemaInferenceEngine
 
 try:
-    from ._robin_column import _unwrap
+    from ._robin_column import RobinColumn, _unwrap
 except ImportError:
+    RobinColumn = None  # type: ignore[misc, assignment]
     _unwrap = lambda x: x  # noqa: E731
+
+
+def _to_robin_select_item(c: Any) -> Any:
+    """Convert column-like to str or PyColumn for Rust select. Handles Sparkless Column (has .name)."""
+    if isinstance(c, str):
+        return c
+    if isinstance(c, RobinColumn):
+        return _unwrap(c)
+    if hasattr(c, "_inner"):
+        inner = getattr(c, "_inner", None)
+        if inner is not None:
+            return inner
+    # Sparkless Column from sparkless.functions has .name -> use Robin F.col(name)
+    if hasattr(c, "name"):
+        try:
+            name = getattr(c, "name")
+            if isinstance(name, str):
+                from ._robin_functions import get_robin_functions
+                return _unwrap(get_robin_functions().col(name))
+        except Exception:
+            pass
+    return _unwrap(c)
 
 
 def _is_simple_column_name(raw_name: Any) -> bool:
@@ -478,20 +501,20 @@ class RobinDataFrame:
         raise TypeError(f"RobinDataFrame does not support __getitem__ for {type(item)}")
 
     def filter(self, condition: Any) -> "RobinDataFrame":
-        return RobinDataFrame(self._inner.filter(_unwrap(condition)))
+        return RobinDataFrame(self._inner.filter(_to_robin_select_item(condition)))
 
     def select(self, *cols: Any) -> "RobinDataFrame":
         # Flatten list/tuple so df.select(["a", "b"]) and df.select((c1, c2)) work like df.select("a", "b")
         flat: List[Any] = []
         for c in cols:
             if isinstance(c, (list, tuple)):
-                flat.extend(_unwrap(x) for x in c)
+                flat.extend(_to_robin_select_item(x) for x in c)
             else:
-                flat.append(_unwrap(c))
+                flat.append(_to_robin_select_item(c))
         return RobinDataFrame(self._inner.select(flat))
 
     def withColumn(self, name: str, col: Any) -> "RobinDataFrame":
-        return RobinDataFrame(self._inner.with_column(name, _unwrap(col)))
+        return RobinDataFrame(self._inner.with_column(name, _to_robin_select_item(col)))
 
     def withColumnRenamed(self, existing: str, new: str) -> "RobinDataFrame":
         """Rename a column. PySpark: df.withColumnRenamed('old', 'new')."""

@@ -221,6 +221,15 @@ def _robin_functions_module() -> Any:
     # PySpark uses countDistinct (camelCase) as well as count_distinct
     RobinFunctions.countDistinct = RobinFunctions.count_distinct  # type: ignore[attr-defined]
 
+    # Stub factory for F.* not in crate (used below and for optional attrs)
+    def _not_impl_stub(name: str) -> Any:
+        def _stub(*args: Any, **kwargs: Any) -> Any:
+            raise NotImplementedError(
+                f"{name} is not implemented for the Robin backend. "
+                "See docs/robin_parity_matrix.md and tests/robin_skip_list.json."
+            )
+        return _stub
+
     # Optional: first, rank (if crate exposes them). Wrap first so F.first(col).over(window) returns RobinColumn.
     if _first is not None:
         def _first_w(col: Any, *args: Any, **kwargs: Any) -> Any:
@@ -277,8 +286,12 @@ def _robin_functions_module() -> Any:
             val = _unwrap(value) if hasattr(value, "_inner") else value
             return _wrap_col(_with_field(_unwrap(col), name, val, *args, **kwargs))
         RobinFunctions.with_field = staticmethod(_with_field_w)  # type: ignore[attr-defined]
+    else:
+        RobinFunctions.with_field = staticmethod(_not_impl_stub("with_field"))  # type: ignore[attr-defined]
     if _rlike is not None:
         RobinFunctions.rlike = staticmethod(_wrap1(_rlike))  # type: ignore[attr-defined]
+    else:
+        RobinFunctions.rlike = staticmethod(_not_impl_stub("rlike"))  # type: ignore[attr-defined]
     if _fill is not None:
         RobinFunctions.fill = staticmethod(_fill)  # type: ignore[attr-defined]
     if _over is not None:
@@ -296,15 +309,15 @@ def _robin_functions_module() -> Any:
         RobinFunctions.isin = staticmethod(_isin)  # type: ignore[attr-defined]
 
     # Stubs for F.* not yet in crate (expr, struct, explode, etc.) so F.expr etc. exist
-    def _not_impl_stub(name: str) -> Any:
-        def _stub(*args: Any, **kwargs: Any) -> Any:
-            raise NotImplementedError(
-                f"{name} is not implemented for the Robin backend. "
-                "See docs/robin_parity_matrix.md and tests/robin_skip_list.json."
-            )
-        return _stub
-
-    for _fn_name in ("expr", "struct", "explode", "posexplode", "isnan", "array_distinct"):
+    for _fn_name in (
+        "expr", "struct", "explode", "posexplode", "isnan", "array_distinct",
+        "approx_count_distinct", "stddev", "stddev_pop", "stddev_samp", "variance",
+        "array_contains", "posexplode_outer", "explode_outer", "date_trunc", "input_file_name",
+        "size", "element_at", "nvl", "nanvl", "nullif", "last", "first",
+        "initcap", "reverse", "repeat", "rtrim", "ltrim", "ascii", "hex", "base64",
+        "soundex", "translate", "levenshtein", "crc32", "xxhash64", "get_json_object",
+        "json_tuple", "regexp_extract_all", "substring_index", "dayofmonth", "dayofweek",
+    ):
         if not hasattr(RobinFunctions, _fn_name):
             setattr(RobinFunctions, _fn_name, staticmethod(_not_impl_stub(_fn_name)))  # type: ignore[attr-defined]
 

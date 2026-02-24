@@ -4,16 +4,12 @@ Global pytest configuration for mock-spark tests.
 This configuration ensures proper resource cleanup to prevent test leaks.
 Supports both mock-spark and PySpark backends for unified testing.
 
-When SPARKLESS_TEST_BACKEND=robin, tests listed in tests/robin_skip_list.json
-are skipped (known Robin/upstream limitations) so the suite can pass.
+When SPARKLESS_TEST_BACKEND=robin, all tests run (no skip list).
 """
 
 import contextlib
 import gc
-import json
 import os
-from pathlib import Path
-
 import pytest
 
 # Prevent numpy crashes on macOS ARM chips with Python 3.9
@@ -181,18 +177,7 @@ def spark(request):
         # When Robin is requested but not available, do not skip: let the test fail so we never
         # silently run in the wrong backend.
         raise
-    except (ImportError, RuntimeError) as e:
-        # Skip test if PySpark session creation fails
-        # This handles known Python 3.11/PySpark 3.2.4 compatibility issues
-        # and Java gateway errors
-        error_msg = str(e)
-        if (
-            "Could not serialize" in error_msg
-            or "pickle" in error_msg.lower()
-            or "Java gateway" in error_msg
-            or "Failed to create PySpark session" in error_msg
-        ):
-            pytest.skip(f"PySpark session creation failed: {e}")
+    except (ImportError, RuntimeError):
         raise
 
     yield session
@@ -223,20 +208,14 @@ def spark_backend(request):
 
 @pytest.fixture
 def pyspark_session(request):
-    """Create a PySpark SparkSession for comparison testing.
-
-    Skips test if PySpark is not available.
-    """
+    """Create a PySpark SparkSession for comparison testing."""
     from tests.fixtures.spark_backend import SparkBackend
 
-    try:
-        session = SparkBackend.create_pyspark_session("test_app", enable_delta=False)
-        yield session
-        with contextlib.suppress(BaseException):
-            session.stop()
-        gc.collect()
-    except (ImportError, RuntimeError) as e:
-        pytest.skip(f"PySpark not available: {e}")
+    session = SparkBackend.create_pyspark_session("test_app", enable_delta=False)
+    yield session
+    with contextlib.suppress(BaseException):
+        session.stop()
+    gc.collect()
 
 
 @pytest.fixture
@@ -273,33 +252,6 @@ def temp_file_storage_path():
         storage_path = os.path.join(tmp_dir, "test_storage")
         yield storage_path
         # Cleanup is handled by TemporaryDirectory context manager
-
-
-def _robin_skip_set():
-    """Load set of test nodeids to skip when running with Robin backend (from robin_skip_list.json)."""
-    skip_path = Path(__file__).resolve().parent / "robin_skip_list.json"
-    if not skip_path.exists():
-        return frozenset()
-    try:
-        data = json.loads(skip_path.read_text())
-        return frozenset(data) if isinstance(data, list) else frozenset()
-    except Exception:
-        return frozenset()
-
-
-def pytest_collection_modifyitems(config, items):
-    """When SPARKLESS_TEST_BACKEND=robin, skip tests in robin_skip_list.json (unless ROBIN_RUN_NO_SKIP=1)."""
-    if (os.environ.get("SPARKLESS_TEST_BACKEND") or "").strip().lower() != "robin":
-        return
-    if (os.environ.get("ROBIN_RUN_NO_SKIP") or "").strip() in ("1", "true", "yes"):
-        return
-    skip_set = _robin_skip_set()
-    if not skip_set:
-        return
-    skip_marker = pytest.mark.skip(reason="Known Robin limitation or upstream robin-sparkless; see robin_skip_list.json")
-    for item in items:
-        if item.nodeid in skip_set:
-            item.add_marker(skip_marker)
 
 
 def pytest_configure(config):
