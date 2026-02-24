@@ -3,11 +3,13 @@
 ## Latest run
 
 **Run:** `pytest tests -n 8 -v --tb=short --ignore=tests/archive`  
-**Result:** **1555 failed**, **999 passed**, 21 skipped, 1 xpassed in **62.68s**  
+**Result:** **1526 failed**, **1028 passed**, 21 skipped, 1 xpassed in **47.02s**  
 **Workers:** 8  
 **Total collected:** 2576 items  
 
-Dominant failure modes: **cannot convert to Column** (501), **select expects Column or str** (216), **udf not implemented** (176), **RobinColumn is not callable** (162), **join on expression not supported** (100). **KeyError 'avg(Value)'** (40) — agg alias may not be in the path used by parity tests (e.g. need `maturin develop` so extension uses F.avg alias). **KeyError 'count'** (14) — count() alias similarly.
+**vs previous run:** **-29 failed**, **+29 passed** (was 1555 failed / 999 passed). Biggest shift: Rust boundary failures (`cannot convert to Column`) now surface as a clearer Python-side error (**Expression columns … not yet supported**).
+
+Dominant failure modes: **Expression columns not yet supported** (499), **select expects Column or str** (214), **udf not implemented** (176), **RobinColumn is not callable** (162), **join on expression not supported** (100). Notable new bucket: **count failed: duplicate 'count'** (16).
 
 ---
 
@@ -15,8 +17,8 @@ Dominant failure modes: **cannot convert to Column** (501), **select expects Col
 
 | Outcome | Count (latest) |
 |--------|--------|
-| Passed  | 999  |
-| Failed  | 1555 |
+| Passed  | 1028  |
+| Failed  | 1526 |
 | Skipped | 21   |
 | XPassed | 1    |
 
@@ -28,14 +30,14 @@ About **61%** of non-archive tests still fail. Remaining failures: Robin backend
 
 | Count | Error / category |
 |------|-------------------|
-| 501 | `ValueError: cannot convert to Column` — Sparkless ColumnOperation/list/expr passed where Robin expects Column or str |
-| 216 | `ValueError: select expects Column or str` — non-Column/non-str in select (list, ColumnOperation, etc.) |
+| 499 | `ValueError: Expression columns ... not yet supported in select/filter` — ColumnOperation/expression currently rejected in Robin select/filter paths |
+| 214 | `ValueError: select expects Column or str` — non-Column/non-str in select (still leaking through some paths) |
 | 176 | `NotImplementedError: udf is not implemented for the Robin backend` |
 | 162 | `TypeError: 'RobinColumn' object is not callable` — F.* used as callable (e.g. selectExpr, replace) |
 | 100 | `NotImplementedError: join on expression (e.g. df1.a == df2.b) is not supported` |
 | 94  | `NotImplementedError: explode is not implemented` |
 | 74  | `NotImplementedError: rlike is not implemented` |
-| 68  | `AssertionError: DataFrames are not equivalent` |
+| 66  | `AssertionError: DataFrames are not equivalent` |
 | 64  | `NotImplementedError: struct is not implemented` |
 | 62  | `NotImplementedError: with_field is not implemented` |
 | 54  | `NotImplementedError: row_number is not implemented` |
@@ -43,19 +45,19 @@ About **61%** of non-archive tests still fail. Remaining failures: Robin backend
 | 52  | `NotImplementedError: expr is not implemented` |
 | 46  | `ValueError: SQL failed: only SELECT, CREATE SCHEMA/DATABASE, and DROP TABLE/VIEW/SCHEMA are supported` |
 | 42  | `TypeError: 'ColumnOperation' object cannot be converted to 'PyColumn'` |
-| 40  | `KeyError: "Key 'avg(Value)' not found in row"` — F.avg() in agg path not aliased in built extension |
 | 28  | `NotImplementedError: array_distinct is not implemented` |
 | 26  | `NotImplementedError: approx_count_distinct is not implemented` |
 | 24  | `NotImplementedError: input_file_name is not implemented` |
 | 20  | `ValueError: select failed: not found: Column 'E1-Extract' not found` (struct/expr naming) |
+| 20  | `ValueError: groupBy with expression columns is not yet supported` (new Python-side guard) |
 | 20  | `ValueError: get_item key must be int (array index) or str (map key)` |
 | 18  | `ValueError: collect failed: field not found: E1` |
 | 18  | `TypeError: log() takes 1 positional arguments but 2 were given` |
 | 16  | `KeyError: "Key 'NaMe' not found in row"` (case sensitivity) |
+| 16  | `ValueError: count failed: duplicate: column with name 'count' has more than one occurrence` |
 | 14  | `ValueError: select failed: not found: Column 'map_col' not found` (create_map alias) |
 | 14  | `NotImplementedError: stddev is not implemented` |
 | 14  | `NotImplementedError: over() is not implemented` |
-| 14  | `KeyError: "Key 'count' not found in row"` |
 | 14  | `AssertionError: assert (None == 0.0)` (fillna/agg) |
 
 Additional: SQL (UPDATE/DELETE, JOIN types), join type leftsemi, isin/list values, datetime/type mismatches, case sensitivity, table/view not found, union column order.

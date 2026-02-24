@@ -283,7 +283,9 @@ class RobinColumn:
         return _wrap(self._f().is_null(self._inner))
 
     def isNotNull(self) -> RobinColumn:
-        """True if not null. PySpark alias; crate has is_not_null/isnotnull."""
+        """True if not null. PySpark alias; crate has is_not_null/isnotnull/isNotNull."""
+        if hasattr(self._inner, "isNotNull"):
+            return _wrap(self._inner.isNotNull())
         if hasattr(self._inner, "isnotnull"):
             return _wrap(self._inner.isnotnull())
         if hasattr(self._inner, "is_not_null"):

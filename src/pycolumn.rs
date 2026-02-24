@@ -59,6 +59,12 @@ impl PyColumn {
         self.is_not_null()
     }
 
+    /// PySpark: col.isNotNull() (camelCase alias for Python code that calls .isNotNull())
+    #[pyo3(name = "isNotNull")]
+    fn is_not_null_camel(&self) -> Self {
+        self.is_not_null()
+    }
+
     /// PySpark: col.between(lower, upper). Inclusive: lower <= self <= upper.
     fn between(&self, lower: &Bound<'_, PyAny>, upper: &Bound<'_, PyAny>) -> PyResult<Self> {
         let lower_col = py_any_to_column(lower)?;

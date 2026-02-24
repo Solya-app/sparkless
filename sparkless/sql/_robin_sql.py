@@ -524,6 +524,10 @@ class RobinDataFrame:
     def filter(self, condition: Any) -> "RobinDataFrame":
         return RobinDataFrame(self._inner.filter(_to_robin_select_item(condition)))
 
+    def where(self, condition: Any) -> "RobinDataFrame":
+        """PySpark compat: where is an alias for filter."""
+        return self.filter(condition)
+
     def select(self, *cols: Any) -> "RobinDataFrame":
         # Flatten list/tuple so df.select(["a", "b"]) and df.select((c1, c2)) work like df.select("a", "b")
         flat: List[Any] = []

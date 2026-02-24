@@ -535,6 +535,8 @@ class DataFrameFactory:
             MapType,
             StructType,
         )
+        if pyspark_schema is None:
+            return StructType([])
 
         def convert_pyspark_field(field: Any) -> StructField:
             """Convert PySpark StructField to StructField."""
@@ -589,6 +591,9 @@ class DataFrameFactory:
                 # Default to StringType for unknown types
                 return StringType()
 
-        # Convert all fields
-        fields = [convert_pyspark_field(field) for field in pyspark_schema.fields]
+        # Convert all fields (guard for None or missing .fields, e.g. Robin schema)
+        schema_fields = getattr(pyspark_schema, "fields", None)
+        if not schema_fields:
+            return StructType([])
+        fields = [convert_pyspark_field(field) for field in schema_fields]
         return StructType(fields)
