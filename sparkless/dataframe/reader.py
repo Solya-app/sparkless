@@ -32,9 +32,13 @@ if TYPE_CHECKING:
     from ..core.interfaces.dataframe import IDataFrame
     from ..core.interfaces.session import ISession
 
+import polars as pl
+
 from ..errors import AnalysisException, IllegalArgumentException
-from ..spark_types import StringType, StructField, StructType
+from ..spark_types import StructField, StructType
 from ..core.ddl_adapter import parse_ddl_schema
+from ..backend.polars.schema_utils import align_frame_to_schema
+from ..backend.polars.type_mapper import polars_dtype_to_mock_type
 
 
 class DataFrameReader:
@@ -157,28 +161,15 @@ class DataFrameReader:
         combined_options: Dict[str, Any] = {**self._options, **options}
 
         if resolved_format == "delta":
+            # Delegate to table() for Delta path semantics
             if path is None:
                 raise IllegalArgumentException(
                     "load() with format 'delta' requires a path. "
                     "Use read.format('delta').table('schema.table') for tables."
                 )
-            # Phase 4: Delegate to Robin when the crate's delta feature is enabled.
-            from ..robin import read_delta_via_robin, read_delta_version_via_robin
-
-            try:
-                version_as_of = combined_options.get("versionAsOf")
-                if version_as_of is not None:
-                    rows = read_delta_version_via_robin(
-                        str(Path(path).resolve()), int(version_as_of)
-                    )
-                else:
-                    rows = read_delta_via_robin(str(Path(path).resolve()))
-                return self.session.createDataFrame(rows)
-            except (AttributeError, RuntimeError) as e:
-                raise AnalysisException(
-                    "Delta read from path requires the robin-sparkless crate's delta feature. "
-                    "Ensure the extension was built with delta support, or use read.table() for catalog Delta tables."
-                ) from e
+            # Treat path segments as schema.table if possible
+            table_name = Path(path).name
+            return self.table(table_name)
 
         if path is None:
             raise IllegalArgumentException(
@@ -189,9 +180,9 @@ class DataFrameReader:
         if not paths:
             raise AnalysisException(f"No {resolved_format} files found at {path}")
 
-        schema, data_rows = self._read_format(paths, resolved_format, combined_options)
-        if self._schema is not None:
-            schema = self._schema
+        frame = self._read_with_polars(paths, resolved_format, combined_options)
+
+        schema, data_rows = self._build_schema_and_rows(frame)
 
         from .dataframe import DataFrame
 
@@ -299,18 +290,21 @@ class DataFrameReader:
         }
         return mapping.get(data_format)
 
-    def _read_format(
+    def _read_with_polars(
         self, paths: Iterable[str], data_format: str, options: Dict[str, Any]
-    ) -> Tuple[StructType, List[Dict[str, Any]]]:
-        """Load data from disk; return (schema, list of row dicts)."""
+    ) -> pl.DataFrame:
+        """Load data from disk using Polars."""
         paths_list = list(paths)
         if not paths_list:
-            return StructType([]), []
+            return pl.DataFrame()
 
         if data_format == "parquet":
-            return self._read_parquet(paths_list, options)
+            return pl.scan_parquet(
+                paths_list, **self._extract_parquet_options(options)
+            ).collect()
         if data_format == "csv":
-            return self._read_csv(paths_list, options)
+            csv_opts = self._extract_csv_options(options)
+            return pl.scan_csv(paths_list, **csv_opts).collect()
         if data_format == "json":
             return self._read_json(paths_list, options)
         if data_format == "text":
@@ -320,60 +314,86 @@ class DataFrameReader:
             f"Unsupported format '{data_format}' for DataFrameReader"
         )
 
-    def _read_parquet(
-        self, paths: List[str], options: Dict[str, Any]
-    ) -> Tuple[StructType, List[Dict[str, Any]]]:
-        """Read Parquet files via Robin crate."""
-        from ..robin import read_parquet_via_robin
-        from ..robin.schema_ser import schema_from_robin_list
+    def _read_json(self, paths: List[str], options: Dict[str, Any]) -> pl.DataFrame:
+        """Read JSON or NDJSON files via Polars, falling back to Python json."""
+        ndjson_opts = {}
+        if "infer_schema_length" in options:
+            ndjson_opts["infer_schema_length"] = int(options["infer_schema_length"])
 
-        all_rows: List[Dict[str, Any]] = []
-        schema: StructType = StructType([])
-        for p in paths:
-            rows, schema_list = read_parquet_via_robin(str(Path(p).resolve()))
-            schema = schema_from_robin_list(schema_list)
-            all_rows.extend(rows)
-        return schema, all_rows
+        try:
+            return pl.scan_ndjson(paths, **ndjson_opts).collect()
+        except Exception:
+            pass
 
-    def _read_csv(
-        self, paths: List[str], options: Dict[str, Any]
-    ) -> Tuple[StructType, List[Dict[str, Any]]]:
-        """Read CSV files via Robin crate."""
-        from ..robin import read_csv_via_robin
-        from ..robin.schema_ser import schema_from_robin_list
+        frames: List[pl.DataFrame] = []
+        import json
 
-        all_rows = []
-        schema = StructType([])
-        for p in paths:
-            rows, schema_list = read_csv_via_robin(str(Path(p).resolve()))
-            schema = schema_from_robin_list(schema_list)
-            all_rows.extend(rows)
-        return schema, all_rows
+        for file_path in paths:
+            with open(file_path, encoding="utf-8") as handle:
+                content = handle.read().strip()
+                if not content:
+                    continue
+                try:
+                    parsed = json.loads(content)
+                except json.JSONDecodeError:
+                    # Attempt line-by-line parsing for permissive mode
+                    parsed = []
+                    for line in content.splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        parsed.append(json.loads(line))
+                if isinstance(parsed, list):
+                    frames.append(pl.DataFrame(parsed))
+                else:
+                    frames.append(pl.DataFrame([parsed]))
 
-    def _read_json(
-        self, paths: List[str], options: Dict[str, Any]
-    ) -> Tuple[StructType, List[Dict[str, Any]]]:
-        """Read JSON or NDJSON via Robin crate."""
-        from ..robin import read_json_via_robin
-        from ..robin.schema_ser import schema_from_robin_list
+        if not frames:
+            return pl.DataFrame()
 
-        all_rows = []
-        schema = StructType([])
-        for p in paths:
-            rows, schema_list = read_json_via_robin(str(Path(p).resolve()))
-            schema = schema_from_robin_list(schema_list)
-            all_rows.extend(rows)
-        return schema, all_rows
+        return pl.concat(frames, how="diagonal_relaxed")
 
-    def _read_text(self, paths: List[str]) -> Tuple[StructType, List[Dict[str, Any]]]:
+    def _read_text(self, paths: List[str]) -> pl.DataFrame:
         """Read plain text files into a single-column DataFrame."""
         values: List[str] = []
         for file_path in paths:
-            with open(file_path, encoding="utf-8") as f:
-                values.extend([line.rstrip("\n") for line in f])
-        schema = StructType([StructField("value", StringType())])
-        rows = [{"value": v} for v in values]
-        return schema, rows
+            with open(file_path, encoding="utf-8") as handle:
+                values.extend([line.rstrip("\n") for line in handle])
+        return pl.DataFrame({"value": values})
+
+    def _extract_parquet_options(self, options: Dict[str, Any]) -> Dict[str, Any]:
+        """Filter parquet-specific options."""
+        parquet_opts: Dict[str, Any] = {}
+        if "hive_partitioning" in options:
+            parquet_opts["hive_partitioning"] = options["hive_partitioning"]
+        return parquet_opts
+
+    def _extract_csv_options(self, options: Dict[str, Any]) -> Dict[str, Any]:
+        """Translate Spark CSV options to Polars equivalents."""
+        csv_opts: Dict[str, Any] = {}
+
+        header = options.get("header", options.get("hasHeader", "true"))
+        csv_opts["has_header"] = self._to_bool(header, default=True)
+
+        delimiter = options.get("sep", options.get("delimiter", ","))
+        if isinstance(delimiter, str) and delimiter:
+            csv_opts["separator"] = delimiter
+
+        null_value = options.get("nullValue")
+        if null_value is not None:
+            csv_opts["null_values"] = null_value
+
+        infer_schema = options.get("inferSchema")
+        if infer_schema is not None and self._to_bool(infer_schema):
+            # Explicitly enable schema inference
+            # Don't set infer_schema_length - let Polars use default (all rows)
+            csv_opts["infer_schema"] = True
+        else:
+            # Explicitly set infer_schema=False to match PySpark default
+            # PySpark defaults to inferSchema=False (all columns as strings)
+            csv_opts["infer_schema"] = False
+
+        return csv_opts
 
     def _to_bool(self, value: Any, default: bool = False) -> bool:
         """Interpret Spark-style truthy values."""
@@ -382,6 +402,21 @@ class DataFrameReader:
         if value is None:
             return default
         return str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+    def _build_schema_and_rows(
+        self, frame: pl.DataFrame
+    ) -> Tuple[StructType, List[Dict[str, Any]]]:
+        """Create StructType schema and dictionary rows from a Polars frame."""
+        if self._schema is not None:
+            aligned = align_frame_to_schema(frame, self._schema)
+            return self._schema, aligned.to_dicts()
+
+        fields: List[StructField] = []
+        for name, dtype in zip(frame.columns, frame.dtypes):
+            mock_type = polars_dtype_to_mock_type(dtype)
+            fields.append(StructField(name, mock_type))
+        schema = StructType(fields)
+        return schema, frame.to_dicts()
 
     def json(self, path: str, **options: Any) -> IDataFrame:
         """Load JSON data from disk."""

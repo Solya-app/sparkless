@@ -31,7 +31,6 @@ from ..spark_types import (
     DateType,
     NullType,
     get_row_value,
-    row_keys,
 )
 
 
@@ -76,7 +75,8 @@ class SchemaInferenceEngine:
         # Collect all unique keys from all rows (sparse data support)
         all_keys: Set[str] = set()
         for row in data:
-            all_keys.update(row_keys(row))
+            if isinstance(row, dict):
+                all_keys.update(row.keys())
 
         # PySpark: list-of-dicts → alphabetical; Pandas DataFrame → preserve column order (Issue #372)
         if column_order is not None:

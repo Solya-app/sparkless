@@ -53,7 +53,7 @@ class AggregateFunctions:
         Raises:
             RuntimeError: If no active SparkSession is available
         """
-        from sparkless.session import SparkSession
+        from sparkless.session.core.session import SparkSession
 
         # Check if we're running in PySpark mode by trying to import PySpark
         try:
@@ -65,10 +65,7 @@ class AggregateFunctions:
         except (ImportError, AttributeError):
             pass  # PySpark not available, continue with Sparkless check
 
-        # Check for Sparkless session. Robin backend uses Rust global session;
-        # if Python _active_sessions is empty we still allow the call so Rust get_or_create_session() can be used.
-        if getattr(SparkSession, "__name__", "") == "RobinSparkSession":
-            return
+        # Check for Sparkless session
         if not SparkSession._has_active_session():
             raise RuntimeError(
                 f"Cannot perform {operation_name}: "

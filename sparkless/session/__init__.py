@@ -1,19 +1,30 @@
 """
 Session management module for Sparkless.
 
-Robin backend: SparkSession comes from sql. This module provides SparkContext,
-Catalog, and configuration without loading the legacy Python execution stack.
+This module provides session management, SQL processing, and configuration
+management for Sparkless, following the Single Responsibility Principle
+and enabling better testability and modularity.
+
+Components:
+    - SparkSession: Main session class
+    - SparkContext: Spark context management
+    - Catalog: Database and table catalog operations
+    - Configuration management
+    - SQL processing pipeline
 """
 
-from .context import SparkContext, JVMContext
+from .core import (
+    SparkSession,
+    SparkSessionBuilder,
+    SparkContext,
+    JVMContext,
+)
 from .catalog import Catalog, Database, Table
 from .config import Configuration
 
-# Re-export from sql for backward compatibility
-from ..sql import SparkSession
-
 __all__ = [
     "SparkSession",
+    "SparkSessionBuilder",
     "SparkContext",
     "JVMContext",
     "Catalog",

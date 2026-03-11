@@ -5,18 +5,32 @@ from __future__ import annotations
 import json
 import os
 from functools import lru_cache
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+DEFAULT_BACKEND = "polars"
+ENV_BACKEND_KEY = "SPARKLESS_BACKEND"
 ENV_FEATURE_FLAGS_KEY = "SPARKLESS_FEATURE_FLAGS"
 ENV_PROFILE_TOGGLE = "SPARKLESS_PROFILE"
 
 _ENV_FEATURE_PREFIX = "SPARKLESS_FEATURE_"
 _FEATURE_FLAG_DEFAULTS: Dict[str, bool] = {
     "enable_performance_profiling": False,
-    "enable_polars_vectorized_shortcuts": False,  # deprecated; no Polars in v4
+    "enable_polars_vectorized_shortcuts": False,
     "enable_expression_translation_cache": False,
     "enable_adaptive_execution_simulation": False,
 }
+
+
+def resolve_backend_type(explicit_backend: Optional[str] = None) -> str:
+    """Resolve the backend type using overrides, environment variables, and defaults."""
+
+    candidate = explicit_backend or os.getenv(ENV_BACKEND_KEY) or DEFAULT_BACKEND
+    candidate_normalized = candidate.strip().lower()
+
+    from sparkless.backend.factory import BackendFactory
+
+    BackendFactory.validate_backend_type(candidate_normalized)
+    return candidate_normalized
 
 
 @lru_cache(maxsize=1)

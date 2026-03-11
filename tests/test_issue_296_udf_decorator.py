@@ -3,11 +3,7 @@ Tests for issue #296: UDF decorator interface support.
 
 PySpark supports UDFs defined with the @udf decorator pattern. This test verifies
 that Sparkless supports the same decorator interface.
-
-Skipped when using Robin native API: Robin uses pandas_udf with different API.
 """
-
-import pytest
 
 from sparkless.sql import SparkSession
 import sparkless.sql.types as T

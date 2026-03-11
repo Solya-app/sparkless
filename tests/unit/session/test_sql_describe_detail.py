@@ -5,7 +5,7 @@ DESCRIBE DETAIL is a Delta Lake specific command that returns table metadata.
 
 import pytest
 from sparkless.delta import DeltaTable
-from tests.fixtures.spark_backend import SparkBackend, BackendType, get_backend_type
+from tests.fixtures.spark_backend import SparkBackend, BackendType
 
 
 @pytest.fixture

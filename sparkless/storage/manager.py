@@ -13,6 +13,7 @@ import os
 from ..core.interfaces.storage import IStorageManager
 from .backends.memory import MemoryStorageManager
 from .backends.file import FileStorageManager
+from sparkless.backend.polars import PolarsStorageManager
 from sparkless.spark_types import StructType, StructField
 
 
@@ -78,11 +79,7 @@ class StorageManagerFactory:
         Returns:
             Polars storage manager instance.
         """
-        # Deferred import to avoid hard dependency on backend.polars in v4.
-        # v4 Robin-only: use in-memory storage (no Polars backend)
-        from sparkless.storage.backends.memory import MemoryStorageManager
-
-        return MemoryStorageManager()
+        return PolarsStorageManager(db_path=db_path)
 
 
 class UnifiedStorageManager(IStorageManager):

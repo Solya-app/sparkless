@@ -1,16 +1,43 @@
 """
 Storage module for Sparkless.
 
-v4 Robin-only: session uses RobinCatalogStorage (Robin's built-in catalog).
-File storage and serialization utilities remain for reader/writer and tests.
+This module provides a comprehensive storage system with Polars as the primary
+persistent storage backend (v3.0.0+) and in-memory storage for testing. Supports
+file-based storage and various serialization formats.
+
+Key Features:
+    - Polars as primary persistent storage backend (v3.0.0+, default)
+    - In-memory storage for testing
+    - File-based storage for data export/import
+    - Flexible serialization (JSON, CSV, Parquet)
+    - Unified storage interface for consistency
+    - Transaction support and data integrity
+    - Schema management and validation
+    - Table and database operations
+    - Storage manager factory for easy backend switching
+
+Example:
+    >>> from sparkless.storage import PolarsStorageManager
+    >>> from sparkless.spark_types import StructType, StructField, StringType, IntegerType
+    >>> storage = PolarsStorageManager()
+    >>> storage.create_schema("test_db")
+    >>> schema = StructType([
+    ...     StructField("name", StringType()),
+    ...     StructField("age", IntegerType())
+    ... ])
+    >>> storage.create_table("test_db", "users", schema)
+    >>> storage.insert_data("test_db", "users", [{"name": "Alice", "age": 25}])
 """
 
 # Import interfaces from canonical location
 from ..core.interfaces.storage import IStorageManager, ITable
 from ..core.types.schema import ISchema
 
-# Import backends (v4 Robin-only: memory is the single catalog backing)
+# Import backends
 from .backends.memory import MemoryStorageManager, MemoryTable, MemorySchema
+
+# Import Polars from backend location (default in v3.0.0+)
+from sparkless.backend.polars import PolarsStorageManager, PolarsTable, PolarsSchema
 from .models import (
     MockTableMetadata,
     ColumnDefinition,
@@ -19,7 +46,6 @@ from .models import (
     QueryResult,
 )
 from .backends.file import FileStorageManager, FileTable, FileSchema
-from .backends.robin import RobinCatalogStorage
 
 # Import serialization
 from .serialization.json import JSONSerializer
@@ -33,18 +59,20 @@ __all__ = [
     "IStorageManager",
     "ITable",
     "ISchema",
-    # Memory backend (v4 Robin-only catalog)
+    # Memory backend
     "MemoryStorageManager",
     "MemoryTable",
     "MemorySchema",
+    # Polars backend (default in v3.0.0+)
+    "PolarsStorageManager",
+    "PolarsTable",
+    "PolarsSchema",
     # Storage models (dataclasses)
     "MockTableMetadata",
     "ColumnDefinition",
     "StorageMode",
     "StorageOperationResult",
     "QueryResult",
-    # Robin catalog backend (v4 default)
-    "RobinCatalogStorage",
     # File backend
     "FileStorageManager",
     "FileTable",

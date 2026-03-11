@@ -336,10 +336,10 @@ class DataFrameFactory:
                 data = normalize_data_for_schema(data, schema)  # type: ignore[arg-type]
 
         if schema is None:
-            # Infer schema from data using SchemaInferenceEngine.
-            # When data is empty and schema is StructType, we never reach here (schema is not None).
+            # Infer schema from data using SchemaInferenceEngine
+            # Note: Empty data case is already handled above
             if not data:
-                # createDataFrame([], schema=None) already raised above; this is a safety net
+                # This should not happen due to validation above, but keep as safety
                 raise ValueError("can not infer schema from empty dataset")
             else:
                 # Check if data is in expected format
@@ -381,12 +381,7 @@ class DataFrameFactory:
 
             # Check if any rows are positional (tuple/list)
             if any(_is_positional_row(row) for row in data):
-                schema_fields = getattr(schema, "fields", None) if schema is not None else None
-                if not schema_fields:
-                    raise IllegalArgumentException(
-                        "Schema is required and must have fields when data contains tuple/list rows."
-                    )
-                field_names = [field.name for field in schema_fields]
+                field_names = [field.name for field in schema.fields]
                 field_count = len(field_names)
 
                 # PySpark requires strict length matching - validate before conversion
@@ -468,8 +463,6 @@ class DataFrameFactory:
             Tuple of (inferred_schema, normalized_data).
         """
         if schema is None:
-            if not data:
-                raise ValueError("can not infer schema from empty dataset")
             from sparkless.core.schema_inference import SchemaInferenceEngine
 
             return SchemaInferenceEngine.infer_from_data(data)
@@ -535,8 +528,6 @@ class DataFrameFactory:
             MapType,
             StructType,
         )
-        if pyspark_schema is None:
-            return StructType([])
 
         def convert_pyspark_field(field: Any) -> StructField:
             """Convert PySpark StructField to StructField."""
@@ -591,9 +582,6 @@ class DataFrameFactory:
                 # Default to StringType for unknown types
                 return StringType()
 
-        # Convert all fields (guard for None or missing .fields, e.g. Robin schema)
-        schema_fields = getattr(pyspark_schema, "fields", None)
-        if not schema_fields:
-            return StructType([])
-        fields = [convert_pyspark_field(field) for field in schema_fields]
+        # Convert all fields
+        fields = [convert_pyspark_field(field) for field in pyspark_schema.fields]
         return StructType(fields)

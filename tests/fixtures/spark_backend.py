@@ -649,8 +649,9 @@ class SparkBackend:
                 app_name, enable_delta=enable_delta, **kwargs
             )
         elif backend == BackendType.ROBIN:
-            # v4: SparkSession is always Robin; no backend_type kwarg
-            return SparkBackend.create_mock_spark_session(app_name, **kwargs)
+            return SparkBackend.create_mock_spark_session(
+                app_name, backend_type="robin", **kwargs
+            )
         else:
             return SparkBackend.create_mock_spark_session(app_name, **kwargs)
 
