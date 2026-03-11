@@ -25,8 +25,10 @@ class ExpressionFunctions:
         Raises:
             RuntimeError: If no active SparkSession is available
         """
-        from sparkless.session.core.session import SparkSession
+        from sparkless.session import SparkSession
 
+        if getattr(SparkSession, "__name__", "") == "RobinSparkSession":
+            return
         # Use getActiveSession() for PySpark compatibility
         if SparkSession.getActiveSession() is None:
             raise RuntimeError(

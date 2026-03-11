@@ -34,16 +34,18 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, TYPE_CHECKING, Tuple, Union, cast
 
-import polars as pl
-
-from sparkless.backend.polars.schema_utils import align_frame_to_schema
+from sparkless.robin.schema_ser import serialize_schema
 from sparkless.errors import AnalysisException, IllegalArgumentException
 
 if TYPE_CHECKING:
-    from sparkless.backend.protocols import StorageBackend
+    from sparkless.core.interfaces.storage import IStorageManager
     from .dataframe import DataFrame
 
-from ..spark_types import StructField, StructType, get_row_value
+from ..spark_types import (
+    StructField,
+    StructType,
+    get_row_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +67,7 @@ class DataFrameWriter:
         >>> df.write.format("parquet").mode("overwrite").saveAsTable("my_table")
     """
 
-    def __init__(self, df: DataFrame, storage: StorageBackend):
+    def __init__(self, df: DataFrame, storage: IStorageManager):
         """Initialize DataFrameWriter.
 
         Args:
@@ -480,16 +482,25 @@ class DataFrameWriter:
             return
 
         data_frame = self._materialize_dataframe()
-        polars_frame = self._to_polars_frame(data_frame.data, data_frame.schema)
+        data = self._data_to_dicts(data_frame.data)
+        schema = data_frame.schema
 
         if resolved_format == "parquet":
-            self._write_parquet(polars_frame, target_path)
+            self._write_parquet(data, schema, target_path)
         elif resolved_format == "json":
-            self._write_json(polars_frame, target_path)
+            self._write_json(data, schema, target_path)
         elif resolved_format == "csv":
-            self._write_csv(polars_frame, target_path)
+            self._write_csv(data, schema, target_path)
         elif resolved_format == "text":
             self._write_text(data_frame.data, data_frame.schema, target_path)
+        elif resolved_format == "delta":
+            try:
+                self._write_delta_via_robin(data_frame, str(target_path))
+            except (AttributeError, RuntimeError) as e:
+                raise AnalysisException(
+                    "Delta write to path requires the robin-sparkless crate's delta feature. "
+                    "Ensure the extension was built with delta support, or use saveAsTable() for catalog Delta tables."
+                ) from e
         else:
             raise AnalysisException(
                 f"File format '{self.format_name}' is not supported."
@@ -611,20 +622,22 @@ class DataFrameWriter:
         else:
             path.unlink()
 
-    def _to_polars_frame(
-        self, data: List[Dict[str, Any]], schema: StructType
-    ) -> pl.DataFrame:
-        """Convert row dictionaries and schema into a Polars DataFrame."""
-        if not schema.fields:
-            return pl.DataFrame(data)
+    def _data_to_dicts(self, data: List[Any]) -> List[Dict[str, Any]]:
+        """Convert DataFrame data (Row/dict) to list of dicts."""
+        from sparkless.spark_types import get_row_value, row_keys
 
-        # Create DataFrame from dictionaries (handles empty data gracefully)
-        frame = (
-            pl.DataFrame(data)
-            if data
-            else pl.DataFrame({f.name: [] for f in schema.fields})
-        )
-        return align_frame_to_schema(frame, schema)
+        if not data:
+            return []
+        out = []
+        for row in data:
+            if hasattr(row, "asDict"):
+                out.append(dict(row.asDict()))
+            elif isinstance(row, dict):
+                out.append(dict(row))
+            else:
+                keys = row_keys(row)
+                out.append({k: get_row_value(row, k) for k in keys})
+        return out
 
     def _next_part_file(self, path: Path, extension: str) -> Path:
         """Generate a unique part file name within the target directory."""
@@ -635,40 +648,45 @@ class DataFrameWriter:
         filename = f"part-{index:05d}-{unique}{extension}"
         return path / filename
 
-    def _write_parquet(self, frame: pl.DataFrame, path: Path) -> None:
+    def _write_parquet(
+        self, data: List[Dict[str, Any]], schema: StructType, path: Path
+    ) -> None:
+        from sparkless.robin import write_parquet_via_robin
+
         target = (
             path
             if path.suffix == ".parquet"
             else self._next_part_file(path, ".parquet")
         )
-        compression = self._options.get("compression", "snappy")
         target.parent.mkdir(parents=True, exist_ok=True)
-        frame.write_parquet(str(target), compression=compression)
+        schema_list = serialize_schema(schema)
+        overwrite = self.save_mode == "overwrite"
+        write_parquet_via_robin(data, schema_list, str(target.resolve()), overwrite)
 
-    def _write_json(self, frame: pl.DataFrame, path: Path) -> None:
+    def _write_json(
+        self, data: List[Dict[str, Any]], schema: StructType, path: Path
+    ) -> None:
+        from sparkless.robin import write_json_via_robin
+
         target = path if path.suffix == ".json" else self._next_part_file(path, ".json")
         target.parent.mkdir(parents=True, exist_ok=True)
-        # Spark writes newline-delimited JSON; Polars handles this via write_ndjson
-        frame.write_ndjson(str(target))
+        schema_list = serialize_schema(schema)
+        overwrite = self.save_mode == "overwrite"
+        write_json_via_robin(data, schema_list, str(target.resolve()), overwrite)
 
-    def _write_csv(self, frame: pl.DataFrame, path: Path) -> None:
+    def _write_csv(
+        self,
+        data: List[Dict[str, Any]],
+        schema: StructType,
+        path: Path,
+    ) -> None:
+        from sparkless.robin import write_csv_via_robin
+
         target = path if path.suffix == ".csv" else self._next_part_file(path, ".csv")
         target.parent.mkdir(parents=True, exist_ok=True)
-
-        include_header = self._get_bool_option("header", default=True)
-        delimiter = self._options.get("sep", self._options.get("delimiter", ","))
-        null_value = self._options.get("nullValue")
-        compression = self._options.get("compression")
-
-        kwargs: Dict[str, Any] = {"include_header": include_header}
-        if delimiter:
-            kwargs["separator"] = delimiter
-        if null_value is not None:
-            kwargs["null_value"] = null_value
-        if compression is not None:
-            kwargs["compression"] = compression
-
-        frame.write_csv(str(target), **kwargs)
+        schema_list = serialize_schema(schema)
+        overwrite = self.save_mode == "overwrite"
+        write_csv_via_robin(data, schema_list, str(target.resolve()), overwrite)
 
     def _write_text(
         self, data: List[Dict[str, Any]], schema: StructType, path: Path
@@ -689,6 +707,17 @@ class DataFrameWriter:
                 value = get_row_value(row, column_name)
                 handle.write("" if value is None else str(value))
                 handle.write(os.linesep)
+
+    def _write_delta_via_robin(self, data_frame: DataFrame, path: str) -> None:
+        """Write DataFrame to Delta table at path using the Robin Rust crate."""
+        from sparkless.robin import write_delta_via_robin
+
+        dict_data = [
+            row.asDict() if hasattr(row, "asDict") else row for row in data_frame.data
+        ]
+        schema_list = serialize_schema(data_frame.schema)
+        overwrite = self.save_mode == "overwrite"
+        write_delta_via_robin(dict_data, schema_list, path, overwrite)
 
     def _get_bool_option(self, key: str, default: bool = False) -> bool:
         """Resolve boolean option values with Spark-compatible parsing."""
