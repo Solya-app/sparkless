@@ -21,21 +21,21 @@ def test_basic(spark):
     assert df.filter(F.col("x") > 1).count() == 1
 ```
 
-## Running tests (v4)
+## Running tests with the Robin backend
 
-In v4, Sparkless uses the Robin engine only. To run the test suite (with the `spark` fixture creating a Robin session):
+To run the suite using the Robin (robin-sparkless) backend, set the environment before invoking pytest or the test script:
 
 ```bash
-SPARKLESS_TEST_BACKEND=robin pytest tests/ -v --ignore=tests/archive
+SPARKLESS_TEST_BACKEND=robin SPARKLESS_BACKEND=robin python -m pytest tests/ -v
 # or
 SPARKLESS_TEST_BACKEND=robin bash tests/run_all_tests.sh
 ```
 
-For parallel runs:
+For parallel runs (`-n 10`):
 
 ```bash
-SPARKLESS_TEST_BACKEND=robin pytest tests/ -n 12 -v --ignore=tests/archive
+SPARKLESS_TEST_BACKEND=robin SPARKLESS_BACKEND=robin python -m pytest tests/ -n 10 --dist loadfile -v
 ```
 
-The Robin extension is built into Sparkless (no separate `pip install robin-sparkless`). Source builds require Rust and maturin.
+Install the optional dependency first: `pip install sparkless[robin]` or `pip install robin-sparkless`. If Robin is selected but not installed, tests that use the `spark` fixture are skipped with a clear message.
 

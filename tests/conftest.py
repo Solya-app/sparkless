@@ -3,8 +3,6 @@ Global pytest configuration for mock-spark tests.
 
 This configuration ensures proper resource cleanup to prevent test leaks.
 Supports both mock-spark and PySpark backends for unified testing.
-
-When SPARKLESS_TEST_BACKEND=robin, all tests run (no skip list).
 """
 
 import contextlib
@@ -177,7 +175,18 @@ def spark(request):
         # When Robin is requested but not available, do not skip: let the test fail so we never
         # silently run in the wrong backend.
         raise
-    except (ImportError, RuntimeError):
+    except (ImportError, RuntimeError) as e:
+        # Skip test if PySpark session creation fails
+        # This handles known Python 3.11/PySpark 3.2.4 compatibility issues
+        # and Java gateway errors
+        error_msg = str(e)
+        if (
+            "Could not serialize" in error_msg
+            or "pickle" in error_msg.lower()
+            or "Java gateway" in error_msg
+            or "Failed to create PySpark session" in error_msg
+        ):
+            pytest.skip(f"PySpark session creation failed: {e}")
         raise
 
     yield session
@@ -208,14 +217,20 @@ def spark_backend(request):
 
 @pytest.fixture
 def pyspark_session(request):
-    """Create a PySpark SparkSession for comparison testing."""
+    """Create a PySpark SparkSession for comparison testing.
+
+    Skips test if PySpark is not available.
+    """
     from tests.fixtures.spark_backend import SparkBackend
 
-    session = SparkBackend.create_pyspark_session("test_app", enable_delta=False)
-    yield session
-    with contextlib.suppress(BaseException):
-        session.stop()
-    gc.collect()
+    try:
+        session = SparkBackend.create_pyspark_session("test_app", enable_delta=False)
+        yield session
+        with contextlib.suppress(BaseException):
+            session.stop()
+        gc.collect()
+    except (ImportError, RuntimeError) as e:
+        pytest.skip(f"PySpark not available: {e}")
 
 
 @pytest.fixture

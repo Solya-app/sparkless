@@ -15,7 +15,6 @@ from ...spark_types import (
     LongType,
     DoubleType,
     get_row_value,
-    row_keys,
 )
 from ...core.column_resolver import ColumnResolver
 from ..protocols import SupportsDataFrameOps
@@ -109,25 +108,19 @@ class JoinService:
         # PySpark raises exceptions immediately, not lazily
         self_schema = self._df.schema
         other_schema = other.schema
-        self_fields = getattr(self_schema, "fields", None) if self_schema is not None else None
-        other_fields = getattr(other_schema, "fields", None) if other_schema is not None else None
-        if self_fields is None:
-            self_fields = []
-        if other_fields is None:
-            other_fields = []
 
         # Check column count
-        if len(self_fields) != len(other_fields):
+        if len(self_schema.fields) != len(other_schema.fields):
             raise AnalysisException(
                 f"Union can only be performed on tables with the same number of columns, "
-                f"but the first table has {len(self_fields)} columns and "
-                f"the second table has {len(other_fields)} columns"
+                f"but the first table has {len(self_schema.fields)} columns and "
+                f"the second table has {len(other_schema.fields)} columns"
             )
 
         # PySpark union() matches by position, not by name (Issue #413).
         # Only check type compatibility at each position; column names may differ.
         for i, (field1, field2) in enumerate(
-            zip(self_fields, other_fields)
+            zip(self_schema.fields, other_schema.fields)
         ):
             # Type compatibility check
             if not SetOperations._are_types_compatible(
@@ -175,18 +168,10 @@ class JoinService:
         from ...core.exceptions.analysis import AnalysisException
         from ...dataframe.operations.set_operations import SetOperations
 
-        # Get column names from both DataFrames (guard against None schema)
+        # Get column names from both DataFrames
         case_sensitive = self._df._is_case_sensitive()
-        self_schema = self._df.schema
-        other_schema = other.schema
-        self_fields = getattr(self_schema, "fields", None) if self_schema is not None else []
-        other_fields = getattr(other_schema, "fields", None) if other_schema is not None else []
-        if self_fields is None:
-            self_fields = []
-        if other_fields is None:
-            other_fields = []
-        self_cols = {field.name for field in self_fields}
-        other_cols = {field.name for field in other_fields}
+        self_cols: Set[str] = {field.name for field in self._df.schema.fields}
+        other_cols: Set[str] = {field.name for field in other.schema.fields}
 
         # Build mappings using ColumnResolver
         self_cols_list = list(self_cols)
@@ -232,7 +217,7 @@ class JoinService:
         for col_name in common_cols:
             # Find the field in both schemas
             self_field: StructField = next(
-                f for f in self_fields if f.name == col_name
+                f for f in self._df.schema.fields if f.name == col_name
             )
             # Find corresponding field in other schema using mapping
             other_col_name = self_to_other_map.get(col_name)
@@ -240,7 +225,7 @@ class JoinService:
                 # Skip if no matching column found (shouldn't happen, but handle gracefully)
                 continue
             other_field: Optional[StructField] = next(
-                (f for f in other_fields if f.name == other_col_name), None
+                (f for f in other.schema.fields if f.name == other_col_name), None
             )
             if other_field is None:
                 # Skip if field not found (shouldn't happen, but handle gracefully)
@@ -331,7 +316,7 @@ class JoinService:
         # Add rows from other DataFrame (using materialized data)
         # Build a mapping from column names to actual column names in other DataFrame rows
         if other_materialized.data:
-            other_row_keys = row_keys(other_materialized.data[0])
+            other_row_keys = list(other_materialized.data[0].keys())
             other_row_map: Dict[str, Optional[str]] = {}
             for col in all_cols:
                 actual_col_in_row = ColumnResolver.resolve_column_name(

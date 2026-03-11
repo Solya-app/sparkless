@@ -45,21 +45,12 @@ Author: Odos Matthews
 import sys
 from types import ModuleType
 
-# Core PySpark API from sql (Robin backend - requires maturin develop)
-from .sql import (  # noqa: E402
-    SparkSession,
-    DataFrame,
-    DataFrameWriter,
-    GroupedData,
-    Column,
-    ColumnOperation,
-    F,
-    Functions,
-)
-from .spark_types import Row  # noqa: E402
-from .window import Window, WindowSpec  # noqa: E402
+from .session import SparkSession  # noqa: E402
 from .session.context import SparkContext, JVMContext  # noqa: E402
+from .dataframe import DataFrame, DataFrameWriter, GroupedData  # noqa: E402
+from .functions import Functions, Column, ColumnOperation, F  # noqa: E402
 from . import compat  # noqa: E402
+from .window import Window, WindowSpec  # noqa: E402
 from .delta import DeltaTable, DeltaMergeBuilder  # noqa: E402
 from .spark_types import (  # noqa: E402
     DataType,
@@ -111,7 +102,7 @@ from .errors import (  # noqa: E402
 #   - sparkless.data_generation - Test data generation
 # ==============================================================================
 
-__version__ = "4.0.0"
+__version__ = "3.31.0"
 __author__ = "Odos Matthews"
 __email__ = "odosmatthews@gmail.com"
 
@@ -225,14 +216,3 @@ from . import sql  # noqa: E402
 
 # Register sql module in sys.modules
 sys.modules["sparkless.sql"] = sql
-
-# ==============================================================================
-# ROBIN NATIVE EXTENSION - Expose sparkless_robin as sparkless._robin
-# ==============================================================================
-# The PyO3 extension is built as sparkless_robin (top-level). Expose it as
-# sparkless._robin for native.py and any code doing "from sparkless import _robin".
-try:
-    import sparkless_robin as _robin  # noqa: F401
-    sys.modules["sparkless._robin"] = _robin
-except ImportError:
-    _robin = None  # type: ignore[assignment]

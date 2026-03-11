@@ -6,14 +6,7 @@ This service provides display and collection operations using composition instea
 
 from typing import Any, List, TYPE_CHECKING, Union, cast
 
-from ...spark_types import (
-    Row,
-    StringType,
-    StructField,
-    StructType,
-    get_row_value,
-    row_keys,
-)
+from ...spark_types import Row, StringType, StructField, StructType, get_row_value
 
 if TYPE_CHECKING:
     from ..dataframe import DataFrame
@@ -68,7 +61,9 @@ class DisplayService:
 
         # Get column names
         columns = (
-            row_keys(display_data[0]) if display_data else self._df.schema.fieldNames()
+            list(display_data[0].keys())
+            if display_data
+            else self._df.schema.fieldNames()
         )
 
         # Calculate column widths
@@ -130,7 +125,9 @@ class DisplayService:
 
         # Get column names
         columns = (
-            row_keys(display_data[0]) if display_data else self._df.schema.fieldNames()
+            list(display_data[0].keys())
+            if display_data
+            else self._df.schema.fieldNames()
         )
 
         # Build markdown table

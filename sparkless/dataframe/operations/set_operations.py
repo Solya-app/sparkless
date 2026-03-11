@@ -13,7 +13,6 @@ from ...spark_types import (
     ShortType,
     ByteType,
     StructField,
-    row_keys,
 )
 
 if TYPE_CHECKING:
@@ -50,7 +49,7 @@ class SetOperations:
 
             # Get all column names from the row
             if row_dict:
-                for col in sorted(row_keys(row_dict)):  # Sort for consistent ordering
+                for col in sorted(row_dict.keys()):  # Sort for consistent ordering
                     value = row_dict[col]
                     # Convert unhashable types to hashable representations
                     try:
@@ -160,21 +159,13 @@ class SetOperations:
         """
         from ...core.exceptions.analysis import AnalysisException
 
-        # Guard against None schema (e.g. Robin unionByName/select path)
-        fields1 = getattr(schema1, "fields", None) if schema1 is not None else None
-        fields2 = getattr(schema2, "fields", None) if schema2 is not None else None
-        if fields1 is None:
-            fields1 = []
-        if fields2 is None:
-            fields2 = []
-
         # Validate schema compatibility
         # Check column count
-        if len(fields1) != len(fields2):
+        if len(schema1.fields) != len(schema2.fields):
             raise AnalysisException(
                 f"Union can only be performed on tables with the same number of columns, "
-                f"but the first table has {len(fields1)} columns and "
-                f"the second table has {len(fields2)} columns"
+                f"but the first table has {len(schema1.fields)} columns and "
+                f"the second table has {len(schema2.fields)} columns"
             )
 
         # PySpark union() matches by position, not by name (Issue #413).
@@ -185,7 +176,7 @@ class SetOperations:
         coerced_data2 = data2.copy()
         result_fields = []
 
-        for i, (field1, field2) in enumerate(zip(fields1, fields2)):
+        for i, (field1, field2) in enumerate(zip(schema1.fields, schema2.fields)):
             # Type compatibility check
             if not SetOperations._are_types_compatible(
                 field1.dataType, field2.dataType
@@ -254,7 +245,7 @@ class SetOperations:
         reordered_data2: List[Dict[str, Any]] = []
         for row in coerced_data2:
             new_row = {
-                result_fields[i].name: row.get(fields2[i].name)
+                result_fields[i].name: row.get(schema2.fields[i].name)
                 for i in range(len(result_fields))
             }
             reordered_data2.append(new_row)

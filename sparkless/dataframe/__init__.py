@@ -1,5 +1,7 @@
 """
 DataFrame module for Sparkless.
+
+This module provides DataFrame functionality organized into submodules.
 """
 
 from .dataframe import DataFrame

@@ -1,11 +1,5 @@
 # Sparkless
 
-> ## ⚠️ Deprecated: moved to `robin-sparkless`
->
-> **Sparkless 4.0 is published and actively developed in** [`eddiethedean/robin-sparkless`](https://github.com/eddiethedean/robin-sparkless).
->
-> This repository is **deprecated** and kept only for historical reference. Please file issues and open PRs against the new repo.
-
 <div align="center">
 
 **🚀 Test PySpark code at lightning speed—no JVM required**
@@ -15,13 +9,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI version](https://badge.fury.io/py/sparkless.svg)](https://badge.fury.io/py/sparkless)
 [![Documentation](https://readthedocs.org/projects/sparkless/badge/?version=latest)](https://sparkless.readthedocs.io/)
-[![Tests](https://img.shields.io/badge/tests-850+%20passing%20(Robin)-brightgreen.svg)](https://github.com/eddiethedean/robin-sparkless)
+[![Tests](https://img.shields.io/badge/tests-2314+%20passing%20%7C%200%20failing-brightgreen.svg)](https://github.com/eddiethedean/sparkless)
 [![Type Checked](https://img.shields.io/badge/mypy-501%20files%20clean-blue.svg)](https://github.com/python/mypy)
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-**Current release:** 4.0.0
+**Current release:** 3.29.0
 
-*⚡ 10x faster tests • 🎯 Drop-in PySpark replacement • 📦 Zero JVM overhead • 🦀 Robin (Rust) engine*
+*⚡ 10x faster tests • 🎯 Drop-in PySpark replacement • 📦 Zero JVM overhead • 🧵 Thread-safe Polars backend*
 
 📚 **[Full Documentation →](https://sparkless.readthedocs.io/)**
 
@@ -49,13 +43,13 @@ from sparkless.sql import SparkSession
 |---------|-------------|
 | ⚡ **10x Faster** | No JVM startup (30s → 0.1s) |
 | 🎯 **Drop-in Replacement** | Use existing PySpark code unchanged |
-| 📦 **Zero Java** | Python + Robin (Rust) engine via PyO3; no JVM |
-| 🧪 **PySpark Parity** | Full PySpark 3.2–3.5 API surface; execution via robin-sparkless crate |
-| 🔄 **Lazy Evaluation** | Logical plans executed by Robin engine |
-| 🏭 **Production Ready** | 850+ passing tests (Robin), 100% mypy typed |
-| 🦀 **Robin Engine** | [robin-sparkless](https://github.com/eddiethedean/robin-sparkless) (0.15.0) directly wired to Python via PyO3; single extension, no extra engine layer |
+| 📦 **Zero Java** | Pure Python with Polars backend (thread-safe, no SQL required) |
+| 🧪 **100% Compatible** | Full PySpark 3.2-3.5 API support |
+| 🔄 **Lazy Evaluation** | Mirrors PySpark's execution model |
+| 🏭 **Production Ready** | 2314+ passing tests, 100% mypy typed |
+| 🧵 **Thread-Safe** | Polars backend designed for parallel execution |
 | 🔧 **Modular Design** | DDL parsing via standalone spark-ddl-parser package |
-| 🎯 **Type Safe** | Full type checking with mypy, comprehensive type annotations |
+| 🎯 **Type Safe** | Full type checking with `ty`, comprehensive type annotations |
 
 ### Perfect For
 
@@ -274,77 +268,103 @@ result = (
 
 ---
 
-## Engine (v4)
+## Backend Architecture
 
-Sparkless v4 runs on a **single execution engine**: the [robin-sparkless](https://github.com/eddiethedean/robin-sparkless) Rust crate, integrated via a PyO3-built native extension. There is no backend selection; the crate is compiled into Sparkless (no separate `pip install robin-sparkless`).
+### Polars Backend (Default)
 
-- 🦀 **Robin 0.15.0** – Logical plans are translated and executed by the crate
-- ⚡ **No JVM** – Pure Python API with Rust execution
-- 📊 **Catalog & SQL** – Optional `sql` and `delta` features in the crate
-- 🔄 **Lazy Evaluation** – Plans built in Python, executed in Robin
+Sparkless uses **Polars** as the default backend, providing:
+
+- 🧵 **Thread Safety** - Designed for parallel execution
+- ⚡ **High Performance** - Optimized DataFrame operations
+- 📊 **Parquet Storage** - Tables persist as Parquet files
+- 🔄 **Lazy Evaluation** - Automatic query optimization
 
 ```python
-# v4: single engine (Robin); no backend config
-spark = SparkSession.builder.appName("MyApp").getOrCreate()
+# Default backend (Polars) - thread-safe, high-performance
+spark = SparkSession("MyApp")
+
+# Explicit backend selection
+spark = SparkSession.builder \
+    .config("spark.sparkless.backend", "polars") \
+    .getOrCreate()
+```
+
+### Alternative Backends
+
+```python
+# Memory backend for lightweight testing
+spark = SparkSession.builder \
+    .config("spark.sparkless.backend", "memory") \
+    .getOrCreate()
+
+# File backend for persistent storage
+spark = SparkSession.builder \
+    .config("spark.sparkless.backend", "file") \
+    .config("spark.sparkless.backend.basePath", "/tmp/sparkless") \
+    .getOrCreate()
 ```
 
 ---
 
 ## Advanced Features
 
-### Table Persistence (v4)
+### Table Persistence
 
-Tables created with `saveAsTable()` use the in-process catalog and storage (Robin engine). In v4, the default storage is in-memory; tables are visible within the same process/session lifecycle.
+Tables created with `saveAsTable()` can persist across multiple sessions:
 
 ```python
-# Create table in catalog
-spark = SparkSession.builder.appName("MyApp").getOrCreate()
-df = spark.createDataFrame([{"id": 1, "name": "Alice"}])
+# First session - create table
+spark1 = SparkSession("App1", db_path="test.db")
+df = spark1.createDataFrame([{"id": 1, "name": "Alice"}])
 df.write.mode("overwrite").saveAsTable("schema.my_table")
+spark1.stop()
 
-# Same session: table is visible
-assert spark.catalog.tableExists("schema", "my_table")
-result = spark.table("schema.my_table").collect()
+# Second session - table persists
+spark2 = SparkSession("App2", db_path="test.db")
+assert spark2.catalog.tableExists("schema", "my_table")  # ✅ True
+result = spark2.table("schema.my_table").collect()  # ✅ Works!
+spark2.stop()
 ```
 
 **Key Features:**
-- **Catalog**: Schemas and tables managed by the Robin session
-- **Data Integrity**: Support for `append` and `overwrite` modes
-- **Delta**: Optional Delta Lake format when the crate is built with the `delta` feature
+- **Cross-Session Persistence**: Tables persist when using `db_path` parameter
+- **Schema Discovery**: Automatically discovers existing schemas and tables
+- **Catalog Synchronization**: Reliable `catalog.tableExists()` checks
+- **Data Integrity**: Full support for `append` and `overwrite` modes
 
-### Session Options (v4)
+### Configurable Memory & Isolation
+
+Control memory usage and test isolation:
 
 ```python
-# Standard usage
-spark = SparkSession.builder.appName("MyApp").getOrCreate()
+# Default: 1GB memory limit, no disk spillover (best for tests)
+spark = SparkSession("MyApp")
 
-# With validation and type coercion options
-spark = SparkSession.builder \
-    .appName("MyApp") \
-    .config("spark.sparkless.useLogicalPlan", "true") \
-    .getOrCreate()
+# Custom memory limit
+spark = SparkSession("MyApp", max_memory="4GB")
+
+# Allow disk spillover for large datasets
+spark = SparkSession(
+    "MyApp",
+    max_memory="8GB",
+    allow_disk_spillover=True  # Uses unique temp directory per session
+)
 ```
 
 ---
 
 ## Performance Comparison
 
-Benchmarks: Sparkless v4 (Robin) vs PySpark on **10k rows**. Run with the installed wheel: `.venv/bin/python scripts/benchmark_sparkless_vs_pyspark.py` (requires PySpark and Java 17+ for PySpark numbers).
+Real-world test suite improvements:
 
-| Operation | PySpark | Sparkless (Robin) | Speedup |
-|-----------|---------|-------------------|---------|
-| Session creation | 0.55s (warm), 30–45s (cold JVM) | &lt;0.01s | **~69,000x** (warm) |
-| Simple query (select+limit) | ~1.5s | ~0.05s | **~34x** |
-| Count | ~1.6s | ~0.03s | **~49x** |
-| Filter + select + limit | ~1.7s | ~0.04s | **~38x** |
-| WithColumn + select + limit | ~1.5s | ~0.06s | **~27x** |
-| GroupBy + sum/count agg | ~1.7s | ~0.04s | **~46x** |
-| OrderBy desc + limit | ~1.6s | ~0.05s | **~32x** |
-| Full test suite (850+ tests) | 5–10 min | ~1 min | **~10x** |
+| Operation | PySpark | Sparkless | Speedup |
+|-----------|---------|------------|---------|
+| Session Creation | 30-45s | 0.1s | **300x** |
+| Simple Query | 2-5s | 0.01s | **200x** |
+| Window Functions | 5-10s | 0.05s | **100x** |
+| Full Test Suite | 5-10min | 30-60s | **10x** |
 
-*Dataset: 10k rows (id, x, key, value). All queries run on robin-sparkless 0.15.0. Full suite: `pytest -n 12`.*
-
-### Performance tooling
+### Performance Tooling
 
 - 📊 [Hot path profiling guide](https://sparkless.readthedocs.io/en/latest/performance/profiling.html)
 - 📈 [Pandas fallback vs native benchmarks](https://sparkless.readthedocs.io/en/latest/performance/pandas_fallback.html)
@@ -354,14 +374,6 @@ Benchmarks: Sparkless v4 (Robin) vs PySpark on **10k rows**. Run with the instal
 ---
 
 ## Recent Updates
-
-### Version 4.0.0 - Robin-only engine (v4)
-
-- 🦀 **Single engine** – Execution is entirely via the [robin-sparkless](https://github.com/eddiethedean/robin-sparkless) Rust crate (0.15.0), integrated with PyO3. No backend selection; no Polars or other Python execution backends.
-- 📦 **No robin-sparkless Python package** – The crate is compiled into Sparkless; you do not need `pip install robin-sparkless`.
-- 🗑️ **Removed** – `BackendFactory`, backend config (`spark.sparkless.backend`), `db_path`, and the legacy `sparkless.backend` package.
-- ✅ **Robin 0.15.0** – Fixes all Sparkless-reported parity issues: [#492](https://github.com/eddiethedean/robin-sparkless/issues/492), [#176](https://github.com/eddiethedean/robin-sparkless/issues/176), [#503](https://github.com/eddiethedean/robin-sparkless/issues/503), [#512](https://github.com/eddiethedean/robin-sparkless/issues/512), [#513](https://github.com/eddiethedean/robin-sparkless/issues/513), [#627](https://github.com/eddiethedean/robin-sparkless/issues/627) (map type), [#628](https://github.com/eddiethedean/robin-sparkless/issues/628) (string/numeric compare), [#629](https://github.com/eddiethedean/robin-sparkless/issues/629) (temp view), and others.
-- 📚 **Docs** – See [robin_parity_matrix.md](docs/robin_parity_matrix.md) (parity gaps and Sparkless fixes), [robin_v4_overhaul_plan.md](docs/robin_v4_overhaul_plan.md), [upstream.md](docs/upstream.md), and [robin_parity_from_skipped_tests.md](docs/robin_parity_from_skipped_tests.md) for parity notes.
 
 ### Version 3.26.0 - Missing String & JSON Functions (Issue #189)
 
@@ -539,22 +551,14 @@ See [Migration Guide](https://sparkless.readthedocs.io/en/latest/migration_from_
 
 ## Development Setup
 
-Sparkless v4 includes a Rust extension (robin-sparkless crate). You need Rust and maturin to build from source. The extension must be built via `pip install -e .` or `maturin develop` (not raw `cargo build`) so it links against Python. If you see Cargo errors (e.g. "no targets specified" or missing `_Py*` linker symbols), set `CARGO_HOME` to your real Cargo home (e.g. `export CARGO_HOME=~/.cargo`). The Makefile does this for `install` and `check-full`.
-
 ```bash
-# Install for development (builds the Robin extension)
+# Install for development
 git clone https://github.com/eddiethedean/sparkless.git
 cd sparkless
 pip install -e ".[dev]"
-# Or: maturin develop (to build the extension in-place)
 
-# Run all tests (Robin backend)
-SPARKLESS_TEST_BACKEND=robin pytest tests/ -n 12 -v --ignore=tests/archive
-# Or use the test script
+# Run all tests (with proper isolation)
 bash tests/run_all_tests.sh
-# Robin parity: see docs/robin_parity_matrix.md. To regenerate the failure report,
-# save pytest output to tests/results_robin_<timestamp>.txt, then run
-# tests/tools/parse_robin_results.py and tests/tools/generate_failure_report.py (see docs/testing_patterns.md).
 
 # Format code
 ruff format .
@@ -573,35 +577,11 @@ ruff check .
 
 We welcome contributions! Areas of interest:
 
-- ⚡ **Performance** - Robin engine and plan translation optimizations
+- ⚡ **Performance** - Further Polars optimizations
 - 📚 **Documentation** - Examples, guides, tutorials
 - 🐛 **Bug Fixes** - Edge cases and compatibility issues
 - 🧪 **PySpark API Coverage** - Additional functions and methods
 - 🧪 **Tests** - Additional test coverage and scenarios
-
-### Robin + PySpark parity workflow (important)
-
-Sparkless aims for **PySpark-parity semantics**, and in v4 runs entirely on the **robin-sparkless** Rust engine. When you work on a behavior bug or apparent mismatch:
-
-1. **Verify the behavior against real PySpark**
-   - Reduce the failing case to a small, self-contained example.
-   - Run it against PySpark (3.2–3.5) and record the output.
-   - Run the equivalent logic through Sparkless (and Robin) and confirm they differ.
-
-2. **Identify whether the bug is in Sparkless or robin-sparkless**
-   - If Sparkless is building the wrong logical plan, using the wrong types, or otherwise mis-translating the API, fix Sparkless.
-   - If Sparkless is making the correct request but the **robin-sparkless crate** itself disagrees with PySpark, treat this as an **upstream Robin parity issue**.
-
-3. **For Robin parity issues, always file an upstream issue**
-   - Open an issue in [`eddiethedean/robin-sparkless`](https://github.com/eddiethedean/robin-sparkless) that:
-     - Clearly states this is a **PySpark parity gap**.
-     - Includes a **minimal repro** showing:
-       - How to reproduce using robin-sparkless (crate or Python bindings).
-       - The equivalent PySpark code and its expected output.
-     - Mentions your Sparkless context and links to any Sparkless issue/PR.
-   - In the Sparkless PR/issue, link to the upstream robin-sparkless ticket and mark the test as a **known Robin parity gap** if we must temporarily skip or soften assertions.
-
-This parity-first workflow keeps Sparkless honest to PySpark, and ensures Robin’s behavior stays aligned with the expectations of the broader PySpark ecosystem.
 
 ---
 
@@ -626,10 +606,10 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Links
 
-- **GitHub (new home)**: [github.com/eddiethedean/robin-sparkless](https://github.com/eddiethedean/robin-sparkless)
+- **GitHub**: [github.com/eddiethedean/sparkless](https://github.com/eddiethedean/sparkless)
 - **PyPI**: [pypi.org/project/sparkless](https://pypi.org/project/sparkless/)
 - **Documentation**: [sparkless.readthedocs.io](https://sparkless.readthedocs.io/)
-- **Issues (new home)**: [github.com/eddiethedean/robin-sparkless/issues](https://github.com/eddiethedean/robin-sparkless/issues)
+- **Issues**: [github.com/eddiethedean/sparkless/issues](https://github.com/eddiethedean/sparkless/issues)
 
 ---
 
@@ -637,6 +617,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **Built with ❤️ for the PySpark community**
 
-*Star ⭐ the new home (`eddiethedean/robin-sparkless`) if Sparkless helps speed up your tests!*
+*Star ⭐ this repo if Sparkless helps speed up your tests!*
 
 </div>

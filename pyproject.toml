@@ -1,19 +1,10 @@
 [build-system]
-requires = ["maturin>=1.5,<2.0"]
-build-backend = "maturin"
-
-[tool.maturin]
-# Match linker deployment target to SDK so object files (e.g. ring) link successfully.
-# If you see "built for newer macOS version than being linked", set MACOSX_DEPLOYMENT_TARGET
-# to your OS version (e.g. 26.0) or raise these to match.
-[tool.maturin.target.aarch64-apple-darwin]
-macos-deployment-target = "26.0"
-[tool.maturin.target.x86_64-apple-darwin]
-macos-deployment-target = "26.0"
+requires = ["setuptools>=61.0,<70", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "sparkless"
-version = "4.0.0"
+version = "3.31.0"
 description = "Lightning-fast PySpark testing without JVM - 10x faster with 100% API compatibility"
 readme = "README.md"
 license = {text = "MIT"}
@@ -45,6 +36,8 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 dependencies = [
+    "spark-ddl-parser>=0.1.0",
+    "polars>=0.20.0",
     "psutil>=5.8.0",
     "typing_extensions>=4.0.0; python_version<'3.9'",
 ]
@@ -58,6 +51,7 @@ analytics = [
     "pandas>=1.3.0,<3",
     "pandas-stubs>=2.0.0,<3",
     "numpy>=1.20.0",
+    "polars[pyarrow]>=0.20.0",
 ]
 dev = [
     "pytest>=7.0.0",
@@ -69,7 +63,6 @@ dev = [
     "pandas>=1.3.0,<3",
     "pandas-stubs>=2.0.0,<3",
     "types-psutil>=6.0.0",
-    "maturin>=1.5,<2.0",
 ]
 test = [
     "pytest>=7.0.0",
@@ -86,6 +79,9 @@ docs = [
     "sphinx-rtd-theme>=1.0.0",
     "myst-parser>=1.0.0",
     "sphinx-autodoc-typehints>=1.19.0",
+]
+robin = [
+    "robin-sparkless>=0.4.0",
 ]
 
 [project.urls]
@@ -147,7 +143,7 @@ warn_no_return = true
 warn_unreachable = true
 strict_equality = true
 show_error_codes = true
-exclude = '(^venv/|^\\.venv/|^venv_exploration_py\\d+/)'
+exclude = '(^venv/|^\.venv/|^venv_exploration_py\d+/)'
 files = ["sparkless", "tests"]
 
 [[tool.mypy.overrides]]
@@ -197,19 +193,11 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
-    "tests.unit.backend.test_robin_optional",
-    "tests.unit.backend.test_robin_materializer",
-    "tests.unit.robin.test_robin_sql",
-]
-# v4: skipped backend tests (dead code); robin tests (fixtures, _robin optional)
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = [
     "sparkless.functions.conditional",
     "sparkless.functions.datetime",
     "sparkless.functions.xml",
     "sparkless.dataframe.grouped.base",
+    "sparkless.backend.polars.export",
     "sparkless.functions.functions",
     "sparkless.dataframe.operations.set_operations",
     "sparkless.core.schema_inference",
@@ -245,8 +233,11 @@ addopts = [
     "-W", "ignore::_pytest.warning_types.PytestRemovedIn9Warning",
     "-W", "ignore:_pytest/fixtures.py::*",
     # Third-party library deprecation warnings
+    "-W", "ignore::DeprecationWarning:polars.*",
     "-W", "ignore::DeprecationWarning:pandas.*",
+    "-W", "ignore::FutureWarning:polars.*",
     "-W", "ignore::FutureWarning:pandas.*",
+    "-W", "ignore::PendingDeprecationWarning:polars.*",
     "-W", "ignore::PendingDeprecationWarning:pandas.*",
     # Pytest internal deprecation warnings
     "-W", "ignore::DeprecationWarning:_pytest.*",
@@ -266,7 +257,6 @@ markers = [
     "delta: marks tests that require Delta Lake JARs (run serially for isolation)",
     "serial: marks tests that must run serially (not in parallel)",
     "performance: marks tests that measure performance (run serially for stable timing)",
-    "legacy_udf: tests requiring old Sparkless udf decorator (Robin uses pandas_udf)",
 ]
 
 [tool.ruff]
@@ -282,11 +272,3 @@ exclude = [
 [tool.ruff.lint]
 extend-select = ["C4", "SIM", "TCH", "UP"]
 ignore = ["UP006", "UP007", "UP045"]  # Ignore Python 3.9+ syntax suggestions for Python 3.8 compatibility
-
-[tool.ruff.lint.per-file-ignores]
-# v4: module-level pytest.skip; dead code references removed types (PolarsMaterializer, BackendFactory)
-"tests/test_backend_capability_model.py" = ["F821"]
-"tests/unit/backend/test_robin_materializer.py" = ["F821"]
-"tests/unit/backend/test_robin_optional.py" = ["F821"]
-# v4: module-level pytest.skip; imports after skip, Polars/backend refs
-"tests/test_issue_160_*.py" = ["E402", "F821"]
