@@ -1,6 +1,8 @@
+import pytest
 import sparkless.sql.functions as F
 import sparkless.sql.types as T
 from sparkless.sql import SparkSession
+from tests.fixtures.spark_backend import BackendType, get_backend_type
 
 
 def test_udf_with_withColumn_regression_279():

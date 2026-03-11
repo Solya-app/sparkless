@@ -28,10 +28,10 @@ Example:
 import warnings
 from typing import Any, Dict
 
-# Import F and Functions for backward compatibility
-from ..functions import F, Functions  # noqa: E402
+# Import F and Functions from backend (Robin or Python)
+from ._backend import F, Functions  # noqa: E402
 
-# Cache for dynamically accessed attributes
+# Cache for dynamically accessed attributess
 _cached_attrs: Dict[str, object] = {}
 
 # Build __all__ list with all public functions from F
@@ -50,20 +50,34 @@ for attr_name in dir(F):
 
 
 def __getattr__(name: str) -> object:
-    """Dynamically provide access to functions from F instance.
-
-    This makes the module behave like PySpark's functions module,
-    where all functions are available at module level.
-    """
+    """Dynamically provide access to functions from F instance."""
     if name in _cached_attrs:
         return _cached_attrs[name]
 
     # PySpark compatibility: F.DataFrame for reduce(F.DataFrame.union, dfs)
     if name == "DataFrame":
-        from ..dataframe import DataFrame  # noqa: E402
+        from ._backend import DataFrame  # noqa: E402
 
         _cached_attrs[name] = DataFrame
         return DataFrame
+
+    # udf: Robin uses UDFRegistration; provide pandas_udf as udf for compat. If neither
+    # exists (e.g. Robin backend), expose a stub so "from sparkless.sql.functions import udf"
+    # succeeds and callers get a clear NotImplementedError instead of ImportError.
+    if name == "udf":
+        attr_value = getattr(F, "pandas_udf", None) or getattr(F, "UDFRegistration", None)
+        if attr_value is not None:
+            _cached_attrs[name] = attr_value
+            return attr_value
+
+        def _udf_stub(*args: Any, **kwargs: Any) -> Any:
+            raise NotImplementedError(
+                "udf is not implemented for the Robin backend. "
+                "Use tests/robin_skip_list.json for tests that require UDFs, or see docs/robin_parity_matrix.md."
+            )
+
+        _cached_attrs[name] = _udf_stub
+        return _udf_stub
 
     # Try to get from F instance
     if hasattr(F, name):
