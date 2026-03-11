@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import datetime as _dt
 
+import pytest
+
 from tests.fixtures.spark_imports import get_spark_imports
+from tests.fixtures.spark_backend import BackendType, get_backend_type
 
 imports = get_spark_imports()
 SparkSession = imports.SparkSession
@@ -32,7 +35,8 @@ class TestDateTruncPolarsBackend:
             df.show()
         """
 
-        spark = SparkSession("test-date-trunc-polars", backend_type="polars")
+        # v4: single backend (Robin); backend_type removed
+        spark = SparkSession("test-date-trunc-polars")
         df = spark.createDataFrame([("2024-03-15",)], ["d"])
 
         df_truncated = df.withColumn("d", F.to_date("d")).withColumn(

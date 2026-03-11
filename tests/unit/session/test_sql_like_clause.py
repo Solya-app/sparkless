@@ -1,3 +1,7 @@
+import pytest
+from tests.fixtures.spark_backend import BackendType, get_backend_type
+
+
 def test_sql_like_simple_prefix_pattern(spark) -> None:
     """BUG-009 regression: basic LIKE 'A%' pattern should work in SQL."""
     # SparkSession not needed - using spark fixture

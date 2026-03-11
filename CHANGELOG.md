@@ -1,5 +1,47 @@
 # Changelog
 
+## 4.0.0 — 2026-02-17
+
+### Summary
+
+Sparkless v4 is **Robin-only**: execution is entirely via the [robin-sparkless](https://github.com/eddiethedean/robin-sparkless) Rust crate (0.11.7+), integrated with PyO3. The Polars backend, backend selection, and the `sparkless.backend` package have been removed.
+
+### Added
+
+- **Robin engine** – Single execution path; logical plans are executed by the robin-sparkless crate (built into the native extension). No separate `pip install robin-sparkless`.
+- **robin-sparkless 0.11.7** – Fixes reported Sparkless parity issues (e.g. [#492](https://github.com/eddiethedean/robin-sparkless/issues/492), [#176](https://github.com/eddiethedean/robin-sparkless/issues/176), [#503](https://github.com/eddiethedean/robin-sparkless/issues/503), [#512](https://github.com/eddiethedean/robin-sparkless/issues/512), [#513](https://github.com/eddiethedean/robin-sparkless/issues/513)).
+- **Documentation** – [docs/robin_parity_from_skipped_tests.md](docs/robin_parity_from_skipped_tests.md), [docs/upstream.md](docs/upstream.md) (Robin version and parity policy), updated README and backend/configuration docs for v4.
+
+### Removed
+
+- **Backend selection** – No `spark.sparkless.backend`, no `BackendFactory`, no `backend_type` constructor argument.
+- **sparkless.backend package** – Entire package removed (factory, protocols, polars storage/materializer/export, etc.).
+- **Polars / memory / file backends** – Execution is Robin-only.
+- **db_path** – Session no longer accepts `db_path`; storage is in-memory via `MemoryStorageManager`.
+
+### Added (Phase 5)
+
+- **DataFrameWriter** – `df.write.format("parquet"|"csv"|"json"|"delta").save(path)`, `df.write.mode("overwrite"|"append").saveAsTable(name)` via Robin native write functions.
+- **createOrReplaceTempView** – `df.createOrReplaceTempView(name)` registers temp views in Robin's catalog for `spark.table(name)` and SQL.
+- **DataFrameReader** – `spark.read.json(path)` and `spark.read.delta(path)` in addition to parquet/csv.
+- **Session unification** – PySparkSession and native pyfunctions (register_temp_view, save_as_table) now share the same Robin session, so temp views registered via `createOrReplaceTempView` are visible in `spark.table()` and SQL.
+
+### Changed
+
+- **Session** – Always creates `MemoryStorageManager`; no backend or storage type configuration.
+- **Thin PyO3 layer** – Sparkless uses a thin Python compatibility layer over PySparkSession/PyDataFrame; execution is via robin-sparkless crate (no plan adapter or logical-plan path).
+- **SQL** – `spark.sql()` executes via Robin when the crate is built with the `sql` feature.
+- **Delta** – Delta read/write use Robin when the crate is built with the `delta` feature; clear errors when the feature is not enabled.
+- **Tests** – Many tests skipped or updated for v4 (backend removal, plan-interpreter removal); run with `SPARKLESS_TEST_BACKEND=robin pytest tests/ -n 12 --ignore=tests/archive`.
+
+### Migration
+
+- Replace any `SparkSession(..., backend_type="...")` or `.config("spark.sparkless.backend", ...)` with `SparkSession.builder.appName("MyApp").getOrCreate()`.
+- Remove reliance on `db_path`; use in-process catalog and storage.
+- See [docs/robin_v4_overhaul_plan.md](docs/robin_v4_overhaul_plan.md) and [docs/backend_selection.md](docs/backend_selection.md) for full migration notes.
+
+---
+
 ## 3.31.0 — 2026-02-05
 
 ### Added

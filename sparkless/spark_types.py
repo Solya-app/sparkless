@@ -746,6 +746,17 @@ def get_row_value(row: Any, key: str, default: Any = None) -> Any:
     return default
 
 
+def row_keys(row: Any) -> List[str]:
+    """Return list of column names for a row (dict or Row). Use instead of row.keys() for Row compatibility."""
+    if isinstance(row, dict):
+        return list(row.keys())
+    if hasattr(row, "asDict"):
+        return list(row.asDict().keys())
+    if hasattr(row, "_fields"):
+        return list(row._fields)
+    return []
+
+
 def _make_hashable(value: Any) -> Any:
     """Convert a value to a hashable form for use in set membership (e.g. distinct/dropDuplicates).
 
@@ -908,6 +919,10 @@ class Row:
             return OrderedDict(self.data).items()
         data_dict = self.data if isinstance(self.data, dict) else dict(self.data)
         return data_dict.items()
+
+    def keys(self) -> List[str]:
+        """Return field names in order (PySpark Row.keys() compatibility)."""
+        return self._get_field_names_ordered()
 
     def __len__(self) -> int:
         """Get length."""

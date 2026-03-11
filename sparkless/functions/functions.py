@@ -74,6 +74,14 @@ class Functions:
         if active is not None:
             return active
 
+        # Robin backend: Rust global session may exist; ensure Python has a session wrapper
+        if getattr(SparkSession, "__name__", "") == "RobinSparkSession":
+            try:
+                fallback = SparkSession("sparkless-robin")
+                return fallback
+            except Exception:
+                pass
+
         raise PySparkValueError(
             "No active SparkSession found. Call SparkSession.builder.getOrCreate() "
             "or pass a session explicitly."
@@ -88,6 +96,8 @@ class Functions:
         """
         from ..session import SparkSession
 
+        if getattr(SparkSession, "__name__", "") == "RobinSparkSession":
+            return
         if not SparkSession._has_active_session():
             raise RuntimeError(
                 f"Cannot perform {operation_name}: "
