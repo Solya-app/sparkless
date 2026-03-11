@@ -1,5 +1,11 @@
 # Sparkless
 
+> ## ⚠️ Deprecated: moved to `robin-sparkless`
+>
+> **Sparkless 4.0 is published and actively developed in** [`eddiethedean/robin-sparkless`](https://github.com/eddiethedean/robin-sparkless).
+>
+> This repository is **deprecated** and kept only for historical reference. Please file issues and open PRs against the new repo.
+
 <div align="center">
 
 **🚀 Test PySpark code at lightning speed—no JVM required**
@@ -9,7 +15,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI version](https://badge.fury.io/py/sparkless.svg)](https://badge.fury.io/py/sparkless)
 [![Documentation](https://readthedocs.org/projects/sparkless/badge/?version=latest)](https://sparkless.readthedocs.io/)
-[![Tests](https://img.shields.io/badge/tests-850+%20passing%20(Robin)-brightgreen.svg)](https://github.com/eddiethedean/sparkless)
+[![Tests](https://img.shields.io/badge/tests-850+%20passing%20(Robin)-brightgreen.svg)](https://github.com/eddiethedean/robin-sparkless)
 [![Type Checked](https://img.shields.io/badge/mypy-501%20files%20clean-blue.svg)](https://github.com/python/mypy)
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
@@ -620,10 +626,10 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Links
 
-- **GitHub**: [github.com/eddiethedean/sparkless](https://github.com/eddiethedean/sparkless)
+- **GitHub (new home)**: [github.com/eddiethedean/robin-sparkless](https://github.com/eddiethedean/robin-sparkless)
 - **PyPI**: [pypi.org/project/sparkless](https://pypi.org/project/sparkless/)
 - **Documentation**: [sparkless.readthedocs.io](https://sparkless.readthedocs.io/)
-- **Issues**: [github.com/eddiethedean/sparkless/issues](https://github.com/eddiethedean/sparkless/issues)
+- **Issues (new home)**: [github.com/eddiethedean/robin-sparkless/issues](https://github.com/eddiethedean/robin-sparkless/issues)
 
 ---
 
@@ -631,6 +637,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **Built with ❤️ for the PySpark community**
 
-*Star ⭐ this repo if Sparkless helps speed up your tests!*
+*Star ⭐ the new home (`eddiethedean/robin-sparkless`) if Sparkless helps speed up your tests!*
 
 </div>
