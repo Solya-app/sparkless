@@ -920,14 +920,19 @@ class DataFrame:
             New DataFrame with the operation queued.
         """
         new_ops: List[Tuple[str, Any]] = self._operations_queue + [(op_name, payload)]
+        new_df = DataFrame(
+            data=self.data,
+            schema=self.schema,
+            storage=self.storage,
+            operations=new_ops,
+        )
+        # Preserve alias through queued operations (needed for join resolution)
+        alias = getattr(self, "_alias", None)
+        if alias is not None:
+            setattr(new_df, "_alias", alias)
         return cast(
             "SupportsDataFrameOps",
-            DataFrame(
-                data=self.data,
-                schema=self.schema,
-                storage=self.storage,
-                operations=new_ops,
-            ),
+            new_df,
         )
 
     def _materialize_if_lazy(self) -> SupportsDataFrameOps:

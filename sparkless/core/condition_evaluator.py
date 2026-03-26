@@ -2152,9 +2152,18 @@ class ConditionEvaluator:
             # Recursively evaluate the operation
             return ConditionEvaluator._evaluate_column_operation_value(row, column)
         elif isinstance(column, Column):
-            return get_row_value(row, column.name)
+            val = get_row_value(row, column.name)
+            # Resolve dot-notation alias references (e.g. "r.id" -> "r_id")
+            if val is None and "." in column.name:
+                underscore_name = column.name.replace(".", "_", 1)
+                val = get_row_value(row, underscore_name)
+            return val
         elif isinstance(column, str):
-            return get_row_value(row, column)
+            val = get_row_value(row, column)
+            if val is None and "." in column:
+                underscore_name = column.replace(".", "_", 1)
+                val = get_row_value(row, underscore_name)
+            return val
         elif hasattr(column, "value"):
             # Literal or similar object with a value attribute
             return column.value

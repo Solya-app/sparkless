@@ -1303,6 +1303,10 @@ class LazyEvaluationEngine:
         # This ensures current._schema is the base schema, not the projected schema
         current = DataFrame(df.data, df._schema, df.storage)
         current._is_cached = getattr(df, "_is_cached", False)
+        # Preserve alias for join resolution
+        _alias = getattr(df, "_alias", None)
+        if _alias is not None:
+            current._alias = _alias  # type: ignore[attr-defined]
 
         # Track schema at each step to validate expressions against the correct schema
         # This fixes issue #160 where expressions created before a select() operation
@@ -2563,6 +2567,11 @@ class LazyEvaluationEngine:
                             right_col = on.value.name
                         else:
                             right_col = left_col
+                        # Resolve dot-notation alias references (e.g. "r.variant_id" -> "variant_id")
+                        if left_alias and left_col.startswith(f"{left_alias}."):
+                            left_col = left_col[len(left_alias) + 1 :]
+                        if right_alias and right_col.startswith(f"{right_alias}."):
+                            right_col = right_col[len(right_alias) + 1 :]
                         left_key = (
                             f"{left_alias}_{left_col}" if left_alias else left_col
                         )
@@ -2889,8 +2898,12 @@ class LazyEvaluationEngine:
                     schema_at_operation = SchemaManager.project_schema_with_operations(
                         base_schema, operations_applied_so_far
                     )
-                    # Update current._schema to match the projected schema
-                    current._schema = schema_at_operation
+                    # Update current._schema to match the projected schema,
+                    # but only when aliases are not involved — alias prefixing
+                    # produces a correct new_schema that SchemaManager doesn't
+                    # know about, so we must not overwrite it.
+                    if not left_alias and not right_alias:
+                        current._schema = schema_at_operation
                 elif op_name == "union":
                     other_df = op_val
                     # Materialize the other DataFrame if it has pending operations
