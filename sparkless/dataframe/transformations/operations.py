@@ -98,27 +98,41 @@ class TransformationOperations(Generic[SupportsDF]):
         has_pending_joins = any(op[0] == "join" for op in self._operations_queue)
 
         if not has_pending_joins:
+            # Resolve column names case-insensitively and normalize to actual case
+            resolved_columns: list = []
             for col in columns:
                 if isinstance(col, str) and col != "*":
-                    # Check if column exists
-                    if col not in self.columns:
+                    # Check if column exists (case-insensitive)
+                    resolved_name = ColumnResolver.resolve_column_name(
+                        col, self.columns, False
+                    )
+                    if resolved_name is None:
                         from ...core.exceptions.operation import (
                             SparkColumnNotFoundError,
                         )
 
                         raise SparkColumnNotFoundError(col, self.columns)
+                    resolved_columns.append(resolved_name)
                 elif isinstance(col, Column):
                     if hasattr(col, "operation"):
                         # Complex expression - validate column references
                         self._validate_expression_columns(col, "select")
+                        resolved_columns.append(col)
                     else:
-                        # Simple column reference - validate
-                        if col.name not in self.columns:
+                        # Simple column reference - resolve case-insensitively
+                        resolved_name = ColumnResolver.resolve_column_name(
+                            col.name, self.columns, False
+                        )
+                        if resolved_name is None:
                             from ...core.exceptions.operation import (
                                 SparkColumnNotFoundError,
                             )
 
                             raise SparkColumnNotFoundError(col.name, self.columns)
+                        if resolved_name != col.name:
+                            resolved_columns.append(Column(resolved_name))
+                        else:
+                            resolved_columns.append(col)
                 elif isinstance(col, ColumnOperation) and not (
                     hasattr(col, "operation")
                     and col.operation in ["months_between", "datediff"]
@@ -126,6 +140,10 @@ class TransformationOperations(Generic[SupportsDF]):
                     # Complex expression - validate column references
                     # Skip validation for function operations that will be evaluated later
                     self._validate_expression_columns(col, "select")
+                    resolved_columns.append(col)
+                else:
+                    resolved_columns.append(col)
+            columns = tuple(resolved_columns)
 
             # Always use lazy evaluation
             return cast("SupportsDF", self._queue_op("select", columns))  # type: ignore[redundant-cast]
@@ -377,14 +395,22 @@ class TransformationOperations(Generic[SupportsDF]):
         return result
 
     def drop(self: SupportsDF, *cols: str) -> SupportsDF:
-        """Drop columns."""
+        """Drop columns (case-insensitive matching)."""
+        # Resolve column names case-insensitively to actual column names
+        cols_lower = {c.lower() for c in cols}
+        resolved_cols = {
+            actual for actual in self.columns if actual.lower() in cols_lower
+        }
+
         new_data = []
         for row in self.data:
-            new_row = {k: v for k, v in row.items() if k not in cols}
+            new_row = {k: v for k, v in row.items() if k not in resolved_cols}
             new_data.append(new_row)
 
         # Update schema
-        new_fields = [field for field in self.schema.fields if field.name not in cols]
+        new_fields = [
+            field for field in self.schema.fields if field.name not in resolved_cols
+        ]
         new_schema = StructType(new_fields)
         from ..dataframe import DataFrame
 

@@ -78,6 +78,22 @@ class ConditionEvaluator:
             if left_value is None or right_value is None:
                 return None
 
+            # PySpark automatically casts string values to numeric (Double) for arithmetic
+            def _coerce_to_numeric(value: Any) -> Any:
+                if isinstance(value, str):
+                    try:
+                        return float(value.strip())
+                    except (ValueError, TypeError):
+                        return None
+                return value
+
+            # Coerce strings to numeric if at least one operand is numeric or both are strings
+            if isinstance(left_value, str) or isinstance(right_value, str):
+                left_value = _coerce_to_numeric(left_value)
+                right_value = _coerce_to_numeric(right_value)
+                if left_value is None or right_value is None:
+                    return None
+
             try:
                 if operation_type == "+":
                     # PySpark compatibility: String concatenation with + operator returns None
@@ -241,6 +257,9 @@ class ConditionEvaluator:
             "endswith",
             "getItem",
             "getField",
+            "xxhash64",
+            "get_json_object",
+            "json_tuple",
         ]:
             return ConditionEvaluator._evaluate_function_operation_value(row, operation)
 
@@ -596,6 +615,8 @@ class ConditionEvaluator:
             params = operation.value
             if isinstance(params, tuple) and len(params) >= 2:
                 delim, count = str(params[0]), int(params[1])
+                if count == 0:
+                    return ""
                 parts = str(col_value).split(delim)
                 if count > 0:
                     return delim.join(parts[:count])
@@ -800,6 +821,68 @@ class ConditionEvaluator:
             if col_value is None:
                 return None
             return str(col_value).endswith(str(operation.value))
+
+        elif operation_type == "xxhash64":
+            # Mock hash function — use Python hash for deterministic results
+            import hashlib
+            vals = [col_value]
+            if hasattr(operation, "value") and operation.value is not None:
+                extra = operation.value if isinstance(operation.value, (list, tuple)) else [operation.value]
+                for v in extra:
+                    vals.append(ConditionEvaluator._get_column_value(row, v))
+            hash_input = "|".join(str(v) if v is not None else "null" for v in vals)
+            h = hashlib.sha256(hash_input.encode()).digest()
+            return int.from_bytes(h[:8], byteorder="big", signed=True)
+
+        elif operation_type == "get_json_object":
+            if col_value is None:
+                return None
+            import json as json_lib
+            path = str(operation.value) if operation.value else "$"
+            try:
+                obj = json_lib.loads(str(col_value))
+            except (json_lib.JSONDecodeError, TypeError):
+                return None
+            # Navigate JSON path (simple $.key.key support)
+            parts = path.lstrip("$").split(".")
+            current_obj = obj
+            for part in parts:
+                if not part:
+                    continue
+                # Handle array index like [0]
+                import re as re_mod
+                arr_match = re_mod.match(r"(\w*)\[(\d+)\]", part)
+                if arr_match:
+                    key, idx = arr_match.group(1), int(arr_match.group(2))
+                    if key and isinstance(current_obj, dict):
+                        current_obj = current_obj.get(key)
+                    if isinstance(current_obj, list) and idx < len(current_obj):
+                        current_obj = current_obj[idx]
+                    else:
+                        return None
+                elif isinstance(current_obj, dict):
+                    current_obj = current_obj.get(part)
+                    if current_obj is None:
+                        return None
+                else:
+                    return None
+            if isinstance(current_obj, (dict, list)):
+                return json_lib.dumps(current_obj, separators=(",", ":"))
+            return str(current_obj) if current_obj is not None else None
+
+        elif operation_type == "json_tuple":
+            if col_value is None:
+                return None
+            import json as json_lib
+            try:
+                obj = json_lib.loads(str(col_value))
+            except (json_lib.JSONDecodeError, TypeError):
+                return None
+            # operation.value is a tuple of field names
+            fields = operation.value if isinstance(operation.value, (list, tuple)) else [operation.value]
+            if isinstance(obj, dict):
+                return tuple(str(obj.get(f)) if obj.get(f) is not None else None for f in fields)
+            return None
 
         elif operation_type in ("getItem", "getField"):
             if col_value is None:

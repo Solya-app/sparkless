@@ -199,14 +199,6 @@ class TestIssue189StringFunctionsRobust:
         )
 
         backend = get_backend_type()
-        if backend == BackendType.ROBIN:
-            from sparkless.core.exceptions.operation import (
-                SparkUnsupportedOperationError,
-            )
-
-            with pytest.raises(SparkUnsupportedOperationError):
-                df.select(F.regexp_extract_all("s", r"\d+", 0).alias("m")).collect()
-            return
         # In PySpark, the regexp argument is treated as a column unless it is a literal.
         # Sparkless expects a Python string. Use backend-appropriate form.
         pattern_digits = F.lit(r"\d+") if backend == BackendType.PYSPARK else r"\d+"

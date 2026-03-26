@@ -458,6 +458,194 @@ class LazyEvaluationEngine:
         return operations
 
     @staticmethod
+    def _normalize_column_names_in_operations(
+        operations_queue: List[Tuple[str, Any]],
+        base_schema: Any,
+    ) -> List[Tuple[str, Any]]:
+        """Normalize column name case in operations queue to match actual schema.
+
+        Resolves user-provided column names (e.g., "name") to actual schema
+        column names (e.g., "Name") using case-insensitive matching.
+        This ensures both the Polars backend and manual materialization
+        find the correct columns.
+        """
+        from ..core.column_resolver import ColumnResolver
+        from ..functions.base import Column, ColumnOperation
+
+        if not hasattr(base_schema, "fields"):
+            return operations_queue
+
+        available_columns = [f.name for f in base_schema.fields]
+        normalized: List[Tuple[str, Any]] = []
+
+        def resolve_name(name: str, cols: List[str]) -> str:
+            """Resolve a column name case-insensitively."""
+            resolved = ColumnResolver.resolve_column_name(name, cols, False)
+            return resolved if resolved is not None else name
+
+        def normalize_expression(expr: Any, cols: List[str]) -> Any:
+            """Recursively normalize column names in expressions."""
+            if isinstance(expr, Column) and not isinstance(expr, ColumnOperation):
+                resolved = resolve_name(expr.name, cols)
+                if resolved != expr.name:
+                    return Column(resolved)
+                return expr
+            elif isinstance(expr, ColumnOperation):
+                # Normalize column references within operations recursively
+                changed = False
+                new_expr = ColumnOperation.__new__(ColumnOperation)
+                new_expr.__dict__.update(expr.__dict__)
+
+                # Normalize the base column reference
+                if hasattr(expr, "column") and expr.column is not None:
+                    normalized_col = normalize_expression(expr.column, cols)
+                    if normalized_col is not expr.column:
+                        new_expr.column = normalized_col
+                        # Regenerate the operation name with the normalized column
+                        new_expr.name = (
+                            ColumnOperation._generate_name_early_helper(
+                                normalized_col,
+                                expr.operation,
+                                expr.value,
+                            )
+                        )
+                        new_expr._name = new_expr.name
+                        changed = True
+
+                # Normalize the value if it's also an expression
+                if hasattr(expr, "value") and expr.value is not None:
+                    normalized_val = normalize_expression(expr.value, cols)
+                    if normalized_val is not expr.value:
+                        new_expr.value = normalized_val
+                        changed = True
+
+                # Normalize left/right for binary operations
+                for attr in ("left", "right"):
+                    if hasattr(expr, attr) and getattr(expr, attr) is not None:
+                        normalized = normalize_expression(
+                            getattr(expr, attr), cols
+                        )
+                        if normalized is not getattr(expr, attr):
+                            setattr(new_expr, attr, normalized)
+                            changed = True
+
+                # Normalize args list (for function calls like coalesce)
+                if hasattr(expr, "args") and expr.args is not None:
+                    new_args = []
+                    args_changed = False
+                    for arg in expr.args:
+                        normalized_arg = normalize_expression(arg, cols)
+                        if normalized_arg is not arg:
+                            args_changed = True
+                        new_args.append(normalized_arg)
+                    if args_changed:
+                        new_expr.args = new_args
+                        changed = True
+
+                # Normalize columns list (for function calls)
+                if hasattr(expr, "columns") and isinstance(expr.columns, (list, tuple)):
+                    new_columns = []
+                    columns_changed = False
+                    for c in expr.columns:
+                        normalized_c = normalize_expression(c, cols)
+                        if normalized_c is not c:
+                            columns_changed = True
+                        new_columns.append(normalized_c)
+                    if columns_changed:
+                        new_expr.columns = new_columns
+                        changed = True
+
+                return new_expr if changed else expr
+            return expr
+
+        # Track current schema columns as they change through operations
+        current_cols = list(available_columns)
+
+        for op_name, op_val in operations_queue:
+            if op_name == "select":
+                new_cols: list = []
+                for col in op_val:
+                    if isinstance(col, str) and col != "*":
+                        resolved = resolve_name(col, current_cols)
+                        new_cols.append(resolved)
+                    elif isinstance(col, Column) and not isinstance(
+                        col, ColumnOperation
+                    ):
+                        resolved = resolve_name(col.name, current_cols)
+                        new_cols.append(
+                            Column(resolved) if resolved != col.name else col
+                        )
+                    else:
+                        new_cols.append(normalize_expression(col, current_cols))
+                normalized.append((op_name, tuple(new_cols)))
+                # Update current columns after select
+                result_cols = []
+                for col in new_cols:
+                    if isinstance(col, str):
+                        result_cols.append(col)
+                    elif isinstance(col, Column) and not isinstance(
+                        col, ColumnOperation
+                    ):
+                        result_cols.append(col.name)
+                    elif hasattr(col, "_alias"):
+                        result_cols.append(col._alias)
+                    else:
+                        result_cols.append(
+                            getattr(col, "name", str(col))
+                        )
+                if "*" in [
+                    c for c in new_cols if isinstance(c, str)
+                ]:
+                    pass  # Keep current_cols
+                else:
+                    current_cols = result_cols
+            elif op_name == "filter":
+                normalized.append(
+                    (op_name, normalize_expression(op_val, current_cols))
+                )
+            elif op_name == "orderBy":
+                cols_list, ascending = op_val
+                new_order_cols = []
+                for col in cols_list:
+                    if isinstance(col, str):
+                        new_order_cols.append(resolve_name(col, current_cols))
+                    elif isinstance(col, Column) and not isinstance(
+                        col, ColumnOperation
+                    ):
+                        resolved = resolve_name(col.name, current_cols)
+                        new_order_cols.append(
+                            Column(resolved) if resolved != col.name else col
+                        )
+                    else:
+                        new_order_cols.append(
+                            normalize_expression(col, current_cols)
+                        )
+                normalized.append((op_name, (new_order_cols, ascending)))
+            elif op_name == "drop":
+                if isinstance(op_val, (list, tuple)):
+                    new_drop = [resolve_name(c, current_cols) for c in op_val]
+                    normalized.append((op_name, new_drop))
+                    current_cols = [c for c in current_cols if c not in new_drop]
+                else:
+                    normalized.append((op_name, op_val))
+            elif op_name == "join":
+                # For joins, normalize the join key(s)
+                other, on, how = op_val
+                if isinstance(on, str):
+                    resolved_on = resolve_name(on, current_cols)
+                    normalized.append((op_name, (other, resolved_on, how)))
+                elif isinstance(on, list):
+                    resolved_on_list = [resolve_name(c, current_cols) for c in on]
+                    normalized.append((op_name, (other, resolved_on_list, how)))
+                else:
+                    normalized.append((op_name, op_val))
+            else:
+                # Pass through other operations unchanged
+                normalized.append((op_name, op_val))
+
+        return normalized
+
+    @staticmethod
     def materialize(df: "DataFrame") -> "DataFrame":
         """Materialize queued lazy operations.
 
@@ -471,6 +659,14 @@ class LazyEvaluationEngine:
             from ..dataframe import DataFrame
 
             return DataFrame(df.data, df.schema, df.storage)
+
+        # Normalize column names in operations queue to match actual schema case
+        # This ensures the backend (Polars or manual) finds columns correctly
+        df._operations_queue = (
+            LazyEvaluationEngine._normalize_column_names_in_operations(
+                df._operations_queue, df._schema
+            )
+        )
 
         # Check if operations require manual materialization
         if LazyEvaluationEngine._requires_manual_materialization(df._operations_queue):
@@ -1667,7 +1863,25 @@ class LazyEvaluationEngine:
                                     # Handle cast operation
                                     try:
                                         # Get the source value
-                                        if hasattr(col, "column") and hasattr(
+                                        if hasattr(col, "column") and isinstance(
+                                            col.column, ColumnOperation
+                                        ):
+                                            # Recursively evaluate nested ColumnOperation (e.g., substr().cast())
+                                            from ..core.condition_evaluator import (
+                                                ConditionEvaluator as CastCondEval,
+                                            )
+
+                                            source_value = (
+                                                CastCondEval.evaluate_expression(
+                                                    row, col.column
+                                                )
+                                            )
+                                        elif hasattr(col, "column") and hasattr(
+                                            col.column, "value"
+                                        ) and not hasattr(col.column, "operation"):
+                                            # Literal value (e.g., F.lit(123).cast("string"))
+                                            source_value = col.column.value
+                                        elif hasattr(col, "column") and hasattr(
                                             col.column, "name"
                                         ):
                                             source_value = get_row_value(
@@ -1748,15 +1962,40 @@ class LazyEvaluationEngine:
                                                         if source_value is not None
                                                         else None
                                                     )
+                                            elif cast_type.lower() == "date":
+                                                if i < len(new_fields):
+                                                    if source_value is not None:
+                                                        from datetime import date as date_type
+
+                                                        try:
+                                                            # Parse date string (YYYY-MM-DD)
+                                                            new_row[new_fields[i].name] = (
+                                                                date_type.fromisoformat(
+                                                                    str(source_value)[:10]
+                                                                )
+                                                            )
+                                                        except (ValueError, TypeError):
+                                                            new_row[new_fields[i].name] = None
+                                                    else:
+                                                        new_row[new_fields[i].name] = None
                                             else:
                                                 if i < len(new_fields):
                                                     new_row[new_fields[i].name] = (
                                                         source_value
                                                     )
                                         else:
+                                            # DataType object - use TypeConverter
+                                            from ..dataframe.casting.type_converter import (
+                                                TypeConverter,
+                                            )
+
                                             if i < len(new_fields):
                                                 new_row[new_fields[i].name] = (
-                                                    source_value
+                                                    TypeConverter.cast_to_type(
+                                                        source_value, cast_type
+                                                    )
+                                                    if source_value is not None
+                                                    else None
                                                 )
                                     except _EVALUATION_FAILURE_EXCEPTIONS:
                                         if i < len(new_fields):
@@ -1966,7 +2205,25 @@ class LazyEvaluationEngine:
                                 ]:
                                     joined_data.append(dict(left_row_p))
                                 else:
-                                    joined_data.append({**left_row_p, **right_row_p})
+                                    merged = {**left_row_p, **right_row_p}
+                                    # For same-name join keys, preserve the value with the wider type
+                                    # (numeric wins over string, matching PySpark behavior)
+                                    for lk, rk in join_conditions:
+                                        if lk == rk and lk in left_row_p and rk in right_row_p:
+                                            lval = left_row_p[lk]
+                                            rval = right_row_p[rk]
+                                            if lval is not None and rval is not None:
+                                                if isinstance(lval, (int, float)) and isinstance(rval, str):
+                                                    merged[lk] = lval
+                                                elif isinstance(lval, str) and isinstance(rval, (int, float)):
+                                                    merged[lk] = rval
+                                                elif isinstance(lval, (int, float)) and isinstance(rval, (int, float)):
+                                                    # Both numeric: use the wider type (float > int)
+                                                    if isinstance(lval, float) or isinstance(rval, float):
+                                                        merged[lk] = float(lval)
+                                                    else:
+                                                        merged[lk] = lval
+                                    joined_data.append(merged)
                                 if how.lower() in ["inner", "inner_join"]:
                                     break
 
@@ -1982,14 +2239,69 @@ class LazyEvaluationEngine:
                             "full",
                             "full_outer",
                         ]:
+                            # Build set of same-name join key columns to avoid overwriting with None
+                            _same_name_keys = {lk for lk, rk in join_conditions if lk == rk}
                             right_null = {
                                 (
                                     f"{right_alias}_{f.name}" if right_alias else f.name
                                 ): None
                                 for f in other_df.schema.fields
                                 if f is not None
+                                and (f"{right_alias}_{f.name}" if right_alias else f.name) not in _same_name_keys
                             }
                             joined_data.append({**left_row_p, **right_null})
+
+                    # For right/outer/full joins, add unmatched right rows
+                    if how.lower() in [
+                        "right",
+                        "right_outer",
+                        "outer",
+                        "full",
+                        "full_outer",
+                    ]:
+                        _same_name_keys_r = {lk for lk, rk in join_conditions if lk == rk}
+                        for right_row in other_df.data:
+                            right_row_p = _prefix_row(right_row, right_alias)
+                            right_matched = False
+                            for left_row in current.data:
+                                left_row_p = _prefix_row(left_row, left_alias)
+                                if use_compound_condition:
+                                    combined = {**left_row_p, **right_row_p}
+                                    right_matched = (
+                                        ConditionEvaluator.evaluate_condition(combined, on)
+                                        is True
+                                    )
+                                else:
+                                    match = True
+                                    for lk, rk in join_conditions:
+                                        lv = get_row_value(left_row_p, lk)
+                                        rv = get_row_value(right_row_p, rk)
+                                        if lv is not None and rv is not None and type(lv) != type(rv):
+                                            try:
+                                                if isinstance(lv, str) and isinstance(rv, (int, float)):
+                                                    lv = type(rv)(lv)
+                                                elif isinstance(rv, str) and isinstance(lv, (int, float)):
+                                                    rv = type(lv)(rv)
+                                                elif isinstance(lv, (int, float)) and isinstance(rv, (int, float)):
+                                                    lv, rv = float(lv), float(rv)
+                                            except (ValueError, TypeError):
+                                                pass
+                                        if lv != rv:
+                                            match = False
+                                            break
+                                    right_matched = match
+                                if right_matched:
+                                    break
+                            if not right_matched:
+                                left_null = {
+                                    (
+                                        f"{left_alias}_{f.name}" if left_alias else f.name
+                                    ): None
+                                    for f in current.schema.fields
+                                    if f is not None
+                                    and (f"{left_alias}_{f.name}" if left_alias else f.name) not in _same_name_keys_r
+                                }
+                                joined_data.append({**left_null, **right_row_p})
 
                     # Schema: prefix field names when alias is set (#382)
                     if how.lower() in [
@@ -2011,15 +2323,54 @@ class LazyEvaluationEngine:
                             for row in joined_data
                         ]
                     else:
-                        from ..spark_types import StructField, StructType
+                        from ..spark_types import StructField, StructType, LongType, DoubleType, FloatType, IntegerType, StringType as SparkStringType
+
+                        # Build a map of same-name join key columns to determine wider type
+                        _join_key_names = set()
+                        for lk, rk in join_conditions:
+                            if lk == rk:
+                                _join_key_names.add(lk)
+
+                        # Build type lookup for right schema fields
+                        _right_type_lookup: Dict[str, Any] = {}
+                        for f in other_df.schema.fields:
+                            if f is None:
+                                continue
+                            rname = f"{right_alias}_{f.name}" if right_alias else f.name
+                            _right_type_lookup[rname] = f.dataType
+
+                        def _wider_spark_type(left_dt: Any, right_dt: Any) -> Any:
+                            """Return the wider of two Spark types (numeric wins over string)."""
+                            _numeric_types = (IntegerType, LongType, FloatType, DoubleType)
+                            left_is_num = isinstance(left_dt, _numeric_types)
+                            right_is_num = isinstance(right_dt, _numeric_types)
+                            if left_is_num and not right_is_num:
+                                return left_dt
+                            if right_is_num and not left_is_num:
+                                return right_dt
+                            if left_is_num and right_is_num:
+                                # Float/Double wins over Int/Long
+                                if isinstance(left_dt, (FloatType, DoubleType)):
+                                    return left_dt
+                                if isinstance(right_dt, (FloatType, DoubleType)):
+                                    return right_dt
+                                # Long wins over Integer
+                                if isinstance(left_dt, LongType) or isinstance(right_dt, LongType):
+                                    return LongType()
+                                return left_dt
+                            return left_dt
 
                         merged_fields = []
                         for f in current.schema.fields:
                             if f is None:
                                 continue  # type: ignore[unreachable]
                             name = f"{left_alias}_{f.name}" if left_alias else f.name
+                            dt = f.dataType
+                            # For same-name join keys, use the wider type
+                            if name in _join_key_names and name in _right_type_lookup:
+                                dt = _wider_spark_type(dt, _right_type_lookup[name])
                             merged_fields.append(
-                                StructField(name, f.dataType, f.nullable)
+                                StructField(name, dt, f.nullable)
                             )
                         for f in other_df.schema.fields:
                             if f is None:

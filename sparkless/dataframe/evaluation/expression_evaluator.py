@@ -1926,6 +1926,7 @@ class ExpressionEvaluator:
             "datediff": self._func_datediff,
             "date_diff": self._func_datediff,  # Alias for datediff
             "date_format": self._func_date_format,
+            "date_trunc": self._func_date_trunc,
             "months_between": self._func_months_between,
             # Array functions
             "array_join": self._func_array_join,
@@ -3705,6 +3706,34 @@ class ExpressionEvaluator:
             ):
                 return dt.isoformat()  # type: ignore[unreachable]
             return dt.strftime("%Y-%m-%d")
+
+    def _func_date_trunc(self, value: Any, operation: ColumnOperation) -> Any:
+        """Truncate date/timestamp to specified unit."""
+        if value is None:
+            return None
+        unit = str(operation.value).lower() if operation.value else "day"
+        dt = self._parse_datetime(value)
+        if dt is None:
+            return None
+        is_date_only = isinstance(value, dt_module.date) and not isinstance(value, dt_module.datetime)
+        if unit in ("year", "yyyy", "yy"):
+            result = dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        elif unit in ("month", "mon", "mm"):
+            result = dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        elif unit in ("day", "dd"):
+            result = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif unit in ("hour",):
+            result = dt.replace(minute=0, second=0, microsecond=0)
+        elif unit in ("minute",):
+            result = dt.replace(second=0, microsecond=0)
+        elif unit in ("second",):
+            result = dt.replace(microsecond=0)
+        else:
+            result = dt
+        # Return date if input was date
+        if is_date_only:
+            return result.date() if isinstance(result, dt_module.datetime) else result
+        return result
 
     def _func_months_between(self, value: Any, operation: ColumnOperation) -> Any:
         """Months between function."""
