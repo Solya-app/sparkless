@@ -3712,10 +3712,13 @@ class ExpressionEvaluator:
         if value is None:
             return None
         unit = str(operation.value).lower() if operation.value else "day"
+        is_date_only = isinstance(value, dt_module.date) and not isinstance(value, dt_module.datetime)
         dt = self._parse_datetime(value)
         if dt is None:
             return None
-        is_date_only = isinstance(value, dt_module.date) and not isinstance(value, dt_module.datetime)
+        # Ensure we have a datetime (not date) for replace with time fields
+        if isinstance(dt, dt_module.date) and not isinstance(dt, dt_module.datetime):
+            dt = dt_module.datetime(dt.year, dt.month, dt.day)
         if unit in ("year", "yyyy", "yy"):
             result = dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
         elif unit in ("month", "mon", "mm"):

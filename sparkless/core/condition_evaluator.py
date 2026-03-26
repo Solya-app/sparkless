@@ -260,6 +260,10 @@ class ConditionEvaluator:
             "xxhash64",
             "get_json_object",
             "json_tuple",
+            "size",
+            "array_contains",
+            "explode",
+            "array",
         ]:
             return ConditionEvaluator._evaluate_function_operation_value(row, operation)
 
@@ -1103,6 +1107,21 @@ class ConditionEvaluator:
                 "bool",
                 ConditionEvaluator._evaluate_function_operation(col_value, op_str2),
             )
+        elif operation_type == "array_contains":
+            # array_contains needs special handling - check if value is in array
+            if col_value is None:
+                return None
+            search_value = operation.value
+            if isinstance(col_value, (list, tuple)):
+                return search_value in col_value
+            return False
+        elif operation_type == "size":
+            # size returns the length of an array or map
+            if col_value is None:
+                return -1
+            if isinstance(col_value, (list, tuple, dict)):
+                return len(col_value)
+            return -1
         elif operation_type == "transform":
             return cast(
                 "bool",
