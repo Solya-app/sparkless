@@ -450,8 +450,17 @@ class CaseWhen:
                 return left_value / right_value if right_value != 0 else None
             elif operation.operation == "%":
                 return left_value % right_value if right_value != 0 else None
+        elif operation.operation == "create_map":
+            # Handle create_map - delegate to ConditionEvaluator
+            return ConditionEvaluator.evaluate_expression(row, operation)
         else:
-            # For other operations, try to get the column value
+            # For other operations, try ConditionEvaluator first, then fallback to column value
+            try:
+                result = ConditionEvaluator.evaluate_expression(row, operation)
+                if result is not None:
+                    return result
+            except Exception:
+                pass
             return ConditionEvaluator._get_column_value(row, operation.column)
 
 

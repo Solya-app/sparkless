@@ -142,7 +142,10 @@ class SetOperations:
 
         # PySpark allows numeric/string combinations (normalizes to string)
         # Issue #242: LongType + StringType -> StringType
-        # For other types, require exact match
+        # For other types with the same base type (e.g., MapType, ArrayType), allow compatibility
+        if type(type1) is type(type2):
+            return True
+
         return (is_numeric1 and is_string2) or (is_string1 and is_numeric2)
 
     @staticmethod

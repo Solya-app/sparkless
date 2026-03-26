@@ -1272,6 +1272,19 @@ class LazyEvaluationEngine:
                 from sparkless.core.schema_inference import infer_schema_from_data
 
                 base_schema = infer_schema_from_data(df.data)
+                # Preserve StructType from explicit schema when inference returns MapType
+                # (dicts are used for both maps and structs; the explicit schema is authoritative)
+                from ..spark_types import StructType as ST, MapType as MT
+                if hasattr(df, '_schema') and hasattr(df._schema, 'fields'):
+                    explicit_field_map = {f.name: f for f in df._schema.fields}
+                    patched_fields = []
+                    for f in base_schema.fields:
+                        ef = explicit_field_map.get(f.name)
+                        if ef is not None and isinstance(f.dataType, MT) and isinstance(ef.dataType, ST):
+                            patched_fields.append(ef)
+                        else:
+                            patched_fields.append(f)
+                    base_schema = ST(patched_fields)
             except (ValueError, Exception):
                 # If schema inference fails (e.g., all-null columns, type conflicts),
                 # extract only fields from df._schema that exist in df.data.
@@ -2397,6 +2410,10 @@ class LazyEvaluationEngine:
                     current._schema = schema_at_operation
                 elif op_name == "union":
                     other_df = op_val
+                    # Materialize the other DataFrame if it has pending operations
+                    # to ensure computed columns (e.g., create_map) are evaluated
+                    if hasattr(other_df, "_operations_queue") and other_df._operations_queue:
+                        other_df = LazyEvaluationEngine.materialize(other_df)
                     # Use SetOperations for union
                     from .operations.set_operations import SetOperations
 

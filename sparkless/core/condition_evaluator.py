@@ -700,6 +700,47 @@ class ConditionEvaluator:
                 result_map[k] = v
             return result_map
 
+        elif operation_type == "size":
+            if col_value is None:
+                return -1  # PySpark returns -1 for null arrays
+            if isinstance(col_value, (list, tuple)):
+                return len(col_value)
+            if isinstance(col_value, dict):
+                return len(col_value)
+            return -1
+
+        elif operation_type == "array_contains":
+            if col_value is None:
+                return None
+            search_value = operation.value
+            if isinstance(col_value, (list, tuple)):
+                return search_value in col_value
+            return False
+
+        elif operation_type == "explode":
+            # explode is handled at the select level for row expansion
+            # Here we just return the array value itself
+            return col_value
+
+        elif operation_type == "array":
+            # Collect values from multiple columns into an array
+            array_result = []
+            if col_value is not None or (hasattr(operation, "column") and hasattr(operation.column, "name") and operation.column.name != "__array_empty_base__"):
+                array_result.append(col_value)
+            # Check for empty array case
+            if hasattr(operation, "column") and hasattr(operation.column, "name") and operation.column.name == "__array_empty_base__":
+                return []
+            # Add remaining values from operation.value
+            if hasattr(operation, "value") and operation.value is not None:
+                if isinstance(operation.value, (list, tuple)):
+                    for item in operation.value:
+                        val = ConditionEvaluator._get_column_value(row, item)
+                        array_result.append(val)
+                else:
+                    val = ConditionEvaluator._get_column_value(row, operation.value)
+                    array_result.append(val)
+            return array_result
+
         elif operation_type == "udf":
             udf_func = getattr(operation, "_udf_func", None)
             udf_cols = getattr(operation, "_udf_cols", None)
