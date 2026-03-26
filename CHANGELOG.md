@@ -1,3 +1,17 @@
+# [4.1.0](https://github.com/Solya-app/sparkless/compare/v4.0.0...v4.1.0) (2026-03-26)
+
+
+### Bug Fixes
+
+* **ci:** remove --skip-existing flag unsupported by Azure Artifacts ([25f34f6](https://github.com/Solya-app/sparkless/commit/25f34f6e64358ea56feb57bafa8b160174e3118f))
+
+
+### Features
+
+* add CTE (WITH clause) support to SQL executor ([#10](https://github.com/Solya-app/sparkless/issues/10)) ([774ff31](https://github.com/Solya-app/sparkless/commit/774ff318cf2b4f6f769dc15b21cea2330703be05))
+* **catalog:** add dropTempView and listLocalTempViews support ([#9](https://github.com/Solya-app/sparkless/issues/9)) ([04ced3c](https://github.com/Solya-app/sparkless/commit/04ced3c2e58b215c9a6fad0cc937670ea1b59e5e))
+* **sql:** add ALTER TABLE support ([#7](https://github.com/Solya-app/sparkless/issues/7)) ([a1741c5](https://github.com/Solya-app/sparkless/commit/a1741c5c92d3b8306dd50a5d42944ba2257ab85a))
+
 # [3.29.0](https://github.com/Solya-app/sparkless/compare/v3.28.0...v3.29.0) (2026-03-26)
 
 
