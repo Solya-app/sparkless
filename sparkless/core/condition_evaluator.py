@@ -264,6 +264,20 @@ class ConditionEvaluator:
             "array_contains",
             "explode",
             "array",
+            "nullif",
+            "nanvl",
+            "pow",
+            "power",
+            "ltrim",
+            "rtrim",
+            "ascii",
+            "hex",
+            "base64",
+            "array_position",
+            "element_at",
+            "array_join",
+            "array_remove",
+            "array_union",
         ]:
             return ConditionEvaluator._evaluate_function_operation_value(row, operation)
 
@@ -334,11 +348,48 @@ class ConditionEvaluator:
         elif operation_type == "rtrim":
             # PySpark rtrim only removes ASCII space characters (0x20), not tabs/newlines
             return str(col_value).rstrip(" ") if col_value is not None else None
+        elif operation_type == "ascii":
+            if col_value is None:
+                return None
+            s = str(col_value)
+            if not s:
+                return None
+            return ord(s[0])
+        elif operation_type == "hex":
+            if col_value is None:
+                return None
+            # PySpark hex: for strings, encode each byte as hex uppercase
+            if isinstance(col_value, (int, float)):
+                return hex(int(col_value))[2:].upper()
+            return str(col_value).encode("utf-8").hex().upper()
+        elif operation_type == "base64":
+            if col_value is None:
+                return None
+            import base64 as base64_mod
+
+            return base64_mod.b64encode(str(col_value).encode("utf-8")).decode("utf-8")
         elif operation_type == "initcap":
             # Capitalize first letter of each word
             if col_value is None:
                 return None
             return " ".join(word.capitalize() for word in str(col_value).split())
+        elif operation_type == "concat":
+            # Concatenate multiple columns: operation.column is first, operation.value is remaining
+            if col_value is None:
+                return None
+            parts = [str(col_value)]
+            if hasattr(operation, "value") and operation.value is not None:
+                remaining = (
+                    operation.value
+                    if isinstance(operation.value, (list, tuple))
+                    else [operation.value]
+                )
+                for col_ref in remaining:
+                    val = ConditionEvaluator._get_column_value(row, col_ref)
+                    if val is None:
+                        return None  # PySpark returns null if any arg is null
+                    parts.append(str(val))
+            return "".join(parts)
         elif operation_type == "concat_ws":
             # Concatenate with separator - operation.value is (sep, [columns])
             # For concat_ws, we need to get values from multiple columns
@@ -683,8 +734,9 @@ class ConditionEvaluator:
                 cur_code: str = codes.get(c, "0")
                 if cur_code != "0" and cur_code != prev_code:
                     soundex_result += cur_code
-                if cur_code != "0":
-                    prev_code = cur_code
+                # Always update prev_code: vowels/non-coded chars reset it
+                # so same-coded letters separated by a vowel are coded twice
+                prev_code = cur_code
             return (soundex_result + "000")[:4]
 
         elif operation_type == "regexp_extract":
@@ -739,9 +791,109 @@ class ConditionEvaluator:
             if col_value is None:
                 return None
             search_value = operation.value
+            # If search_value is a Column reference, resolve it from the row
+            if hasattr(search_value, "name"):
+                search_value = ConditionEvaluator._get_column_value(row, search_value)
             if isinstance(col_value, (list, tuple)):
                 return search_value in col_value
             return False
+
+        elif operation_type == "array_position":
+            if col_value is None:
+                return None
+            search_value = operation.value
+            if isinstance(col_value, (list, tuple)):
+                try:
+                    return col_value.index(search_value) + 1  # 1-based
+                except ValueError:
+                    return 0
+            return 0
+
+        elif operation_type == "element_at":
+            if col_value is None:
+                return None
+            idx = operation.value
+            if isinstance(idx, float):
+                idx = int(idx)
+            if isinstance(col_value, dict):
+                return col_value.get(idx)
+            if isinstance(col_value, (list, tuple)):
+                if idx > 0:
+                    # 1-based indexing
+                    if idx <= len(col_value):
+                        return col_value[idx - 1]
+                    return None
+                elif idx < 0:
+                    # Negative indexing from end
+                    if abs(idx) <= len(col_value):
+                        return col_value[idx]
+                    return None
+            return None
+
+        elif operation_type == "array_join":
+            if col_value is None:
+                return None
+            if not isinstance(col_value, (list, tuple)):
+                return None
+            # operation.value is (delimiter, null_replacement)
+            delimiter = ","
+            null_replacement = None
+            if hasattr(operation, "value") and operation.value is not None:
+                if isinstance(operation.value, tuple):
+                    delimiter = (
+                        str(operation.value[0])
+                        if operation.value[0] is not None
+                        else ","
+                    )
+                    null_replacement = (
+                        operation.value[1] if len(operation.value) > 1 else None
+                    )
+                elif isinstance(operation.value, str):
+                    delimiter = operation.value
+            parts = []
+            for item in col_value:
+                if item is None:
+                    if null_replacement is not None:
+                        parts.append(str(null_replacement))
+                    # else skip None items (PySpark behavior)
+                else:
+                    parts.append(str(item))
+            return delimiter.join(parts)
+
+        elif operation_type == "array_remove":
+            if col_value is None:
+                return None
+            if not isinstance(col_value, (list, tuple)):
+                return None
+            remove_value = operation.value
+            return [x for x in col_value if x != remove_value]
+
+        elif operation_type == "array_union":
+            if col_value is None:
+                return None
+            arr2 = ConditionEvaluator._get_column_value(row, operation.value)
+            if arr2 is None:
+                return None
+            if not isinstance(col_value, (list, tuple)) or not isinstance(
+                arr2, (list, tuple)
+            ):
+                return None
+            # Union preserving order, removing duplicates
+            seen: set = set()  # type: ignore[no-redef]
+            result: list = []  # type: ignore[no-redef]
+            for item in list(col_value) + list(arr2):
+                try:
+                    key = (
+                        item
+                        if isinstance(item, (int, float, str, bool, type(None)))
+                        else repr(item)
+                    )
+                except TypeError:
+                    key = repr(item)
+                if key not in seen:
+                    seen.add(key)
+                    result.append(item)
+            return result
 
         elif operation_type == "explode":
             # explode is handled at the select level for row expansion
@@ -1024,14 +1176,23 @@ class ConditionEvaluator:
         elif operation_type == "split":
             if col_value is None:
                 return None
-            # operation.value is (delimiter, limit)
+            import re as re_split_mod
+
+            # operation.value is (pattern, limit)
             if isinstance(operation.value, tuple) and len(operation.value) >= 1:
-                delimiter = operation.value[0]
+                pattern = operation.value[0]
                 limit = operation.value[1] if len(operation.value) > 1 else None
-                if limit and limit > 0:
-                    return str(col_value).split(delimiter, limit)
+                if limit is not None and limit > 0:
+                    # PySpark limit=N means N parts (split at most N-1 times)
+                    if limit == 1:
+                        # limit=1 means no split at all, return original as single-element list
+                        return [str(col_value)]
+                    return re_split_mod.split(
+                        pattern, str(col_value), maxsplit=limit - 1
+                    )
                 else:
-                    return str(col_value).split(delimiter)
+                    # limit is None, 0, or negative: split all
+                    return re_split_mod.split(pattern, str(col_value))
             return str(col_value).split()
 
         elif operation_type == "coalesce":
@@ -1052,6 +1213,166 @@ class ConditionEvaluator:
                         return val
             return None
 
+        elif operation_type == "to_date":
+            if col_value is None:
+                return None
+            try:
+                from datetime import datetime
+
+                fmt: Any = getattr(operation, "value", None)  # type: ignore[no-redef]
+                if fmt and isinstance(fmt, str):
+                    # Convert Java/Spark date format to Python strftime format
+                    python_fmt = (
+                        fmt.replace("yyyy", "%Y")
+                        .replace("yy", "%y")
+                        .replace("MM", "%m")
+                        .replace("dd", "%d")
+                        .replace("HH", "%H")
+                        .replace("mm", "%M")
+                        .replace("ss", "%S")
+                    )
+                    return datetime.strptime(str(col_value), python_fmt).date()
+                else:
+                    return datetime.strptime(str(col_value), "%Y-%m-%d").date()
+            except ValueError:
+                return None
+
+        elif operation_type == "log":
+            import math
+
+            if col_value is None:
+                return None
+            try:
+                val = float(col_value)
+                if val <= 0:
+                    return None
+                if operation.value is not None:
+                    base_raw = (
+                        ConditionEvaluator._get_column_value(row, operation.value)
+                        if isinstance(operation.value, (Column, ColumnOperation))
+                        else operation.value
+                    )
+                    base = float(base_raw)
+                    if base <= 0 or base == 1:
+                        return None
+                    return math.log(val, base)
+                return math.log(val)
+            except (ValueError, TypeError):
+                return None
+        elif operation_type in ("pow", "power"):
+            if col_value is None:
+                return None
+            try:
+                base_val = float(col_value)
+                exp_val = ConditionEvaluator._get_column_value(row, operation.value)
+                if exp_val is None:
+                    return None
+                return float(base_val) ** float(exp_val)
+            except (ValueError, TypeError):
+                return None
+        elif operation_type == "nullif":
+            val2 = ConditionEvaluator._get_column_value(row, operation.value)
+            if col_value is not None and col_value == val2:
+                return None
+            return col_value
+        elif operation_type == "nanvl":
+            import math as _math
+
+            val2 = ConditionEvaluator._get_column_value(row, operation.value)
+            if col_value is None:
+                return None
+            try:
+                if isinstance(col_value, float) and _math.isnan(col_value):
+                    return val2
+            except (TypeError, ValueError):
+                pass
+            return col_value
+        elif operation_type == "isnull":
+            return col_value is None
+        elif operation_type == "isnotnull":
+            return col_value is not None
+        elif operation_type == "date_add":
+            if col_value is None:
+                return None
+            try:
+                from datetime import datetime, timedelta, date as date_type
+
+                if isinstance(col_value, str):
+                    try:
+                        dt = datetime.strptime(col_value, "%Y-%m-%d").date()  # type: ignore[assignment]
+                    except ValueError:
+                        dt = datetime.fromisoformat(col_value.replace(" ", "T")).date()  # type: ignore[assignment]
+                elif isinstance(col_value, datetime):
+                    dt = col_value.date()  # type: ignore[assignment]
+                elif isinstance(col_value, date_type):
+                    dt = col_value  # type: ignore[assignment]
+                else:
+                    dt = col_value
+                days = int(operation.value) if operation.value is not None else 1
+                return dt + timedelta(days=days)
+            except (ValueError, AttributeError, TypeError):
+                return None
+        elif operation_type == "date_sub":
+            if col_value is None:
+                return None
+            try:
+                from datetime import datetime, timedelta, date as date_type
+
+                if isinstance(col_value, str):
+                    try:
+                        dt = datetime.strptime(col_value, "%Y-%m-%d").date()  # type: ignore[assignment]
+                    except ValueError:
+                        dt = datetime.fromisoformat(col_value.replace(" ", "T")).date()  # type: ignore[assignment]
+                elif isinstance(col_value, datetime):
+                    dt = col_value.date()  # type: ignore[assignment]
+                elif isinstance(col_value, date_type):
+                    dt = col_value  # type: ignore[assignment]
+                else:
+                    dt = col_value
+                days = int(operation.value) if operation.value is not None else 1
+                return dt - timedelta(days=days)
+            except (ValueError, AttributeError, TypeError):
+                return None
+        elif operation_type == "greatest":
+            values = []
+            if col_value is not None:
+                values.append(col_value)
+            if hasattr(operation, "value") and operation.value is not None:
+                remaining = (
+                    operation.value
+                    if isinstance(operation.value, (list, tuple))
+                    else [operation.value]
+                )
+                for col_ref in remaining:
+                    val = ConditionEvaluator._get_column_value(row, col_ref)
+                    if val is not None:
+                        values.append(val)
+            if not values:
+                return None
+            try:
+                return max(values)
+            except TypeError:
+                return None
+        elif operation_type == "least":
+            values = []
+            if col_value is not None:
+                values.append(col_value)
+            if hasattr(operation, "value") and operation.value is not None:
+                remaining = (
+                    operation.value
+                    if isinstance(operation.value, (list, tuple))
+                    else [operation.value]
+                )
+                for col_ref in remaining:
+                    val = ConditionEvaluator._get_column_value(row, col_ref)
+                    if val is not None:
+                        values.append(val)
+            if not values:
+                return None
+            try:
+                return min(values)
+            except TypeError:
+                return None
         else:
             # For other functions, delegate to the existing function evaluation
             # operation_type is guaranteed to be a string in ColumnOperation
@@ -1265,6 +1586,9 @@ class ConditionEvaluator:
             if col_value is None:
                 return None
             search_value = operation.value
+            # If search_value is a Column reference, resolve it from the row
+            if hasattr(search_value, "name"):
+                search_value = ConditionEvaluator._get_column_value(row, search_value)
             if isinstance(col_value, (list, tuple)):
                 return search_value in col_value
             return False
@@ -1570,7 +1894,10 @@ class ConditionEvaluator:
                 from datetime import datetime
 
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    try:
+                        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        dt = datetime.fromisoformat(value.replace(" ", "T"))
                 else:
                     dt = value
                 return dt.hour
@@ -1583,7 +1910,10 @@ class ConditionEvaluator:
                 from datetime import datetime
 
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    try:
+                        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        dt = datetime.fromisoformat(value.replace(" ", "T"))
                 else:
                     dt = value
                 return dt.day
@@ -1596,7 +1926,10 @@ class ConditionEvaluator:
                 from datetime import datetime
 
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    try:
+                        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        dt = datetime.fromisoformat(value.replace(" ", "T"))
                 else:
                     dt = value
                 return dt.month
@@ -1609,7 +1942,10 @@ class ConditionEvaluator:
                 from datetime import datetime
 
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    try:
+                        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        dt = datetime.fromisoformat(value.replace(" ", "T"))
                 else:
                     dt = value
                 return dt.year
@@ -1622,10 +1958,13 @@ class ConditionEvaluator:
                 from datetime import datetime
 
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    try:
+                        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        dt = datetime.fromisoformat(value.replace(" ", "T"))
                 else:
                     dt = value
-                return dt.weekday() + 1  # PySpark uses 1-based weekday
+                return dt.isoweekday() % 7 + 1  # PySpark: Sun=1, Mon=2, ..., Sat=7
             except (ValueError, AttributeError):
                 return None
         elif operation_type == "dayofyear":
@@ -1635,7 +1974,10 @@ class ConditionEvaluator:
                 from datetime import datetime
 
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    try:
+                        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        dt = datetime.fromisoformat(value.replace(" ", "T"))
                 else:
                     dt = value
                 return dt.timetuple().tm_yday
@@ -1648,7 +1990,10 @@ class ConditionEvaluator:
                 from datetime import datetime
 
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    try:
+                        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        dt = datetime.fromisoformat(value.replace(" ", "T"))
                 else:
                     dt = value
                 return dt.isocalendar()[1]
@@ -1661,7 +2006,10 @@ class ConditionEvaluator:
                 from datetime import datetime
 
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    try:
+                        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        dt = datetime.fromisoformat(value.replace(" ", "T"))
                 else:
                     dt = value
                 return (dt.month - 1) // 3 + 1
@@ -1674,7 +2022,10 @@ class ConditionEvaluator:
                 from datetime import datetime
 
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    try:
+                        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        dt = datetime.fromisoformat(value.replace(" ", "T"))
                 else:
                     dt = value
                 return dt.minute
@@ -1687,38 +2038,61 @@ class ConditionEvaluator:
                 from datetime import datetime
 
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    try:
+                        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        dt = datetime.fromisoformat(value.replace(" ", "T"))
                 else:
                     dt = value
                 return dt.second
             except (ValueError, AttributeError):
                 return None
         elif operation_type == "date_add":
-            # For date_add, we need days to add - this is a simplified version
+            # For date_add, we need days to add
             if value is None:
                 return None
             try:
-                from datetime import datetime, timedelta
+                from datetime import datetime, timedelta, date as date_type
 
+                # type: ignore[assignment]
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d")
+                    try:  # type: ignore[assignment]
+                        dt = datetime.strptime(value, "%Y-%m-%d").date()  # type: ignore[assignment]
+                    except ValueError:  # type: ignore[assignment]
+                        dt = datetime.fromisoformat(value.replace(" ", "T")).date()  # type: ignore[assignment]
+                elif isinstance(value, datetime):  # type: ignore[assignment]
+                    dt = value.date()  # type: ignore[assignment]
+                elif isinstance(value, date_type):
+                    dt = value  # type: ignore[assignment]
                 else:
                     dt = value
-                return dt + timedelta(days=1)  # Simplified: always add 1 day
+                return dt + timedelta(
+                    days=1
+                )  # Simplified: always add 1 day in fallback
             except (ValueError, AttributeError):
                 return None
         elif operation_type == "date_sub":
-            # For date_sub, we need days to subtract - this is a simplified version
+            # For date_sub, we need days to subtract
             if value is None:
                 return None
             try:
-                from datetime import datetime, timedelta
+                from datetime import datetime, timedelta, date as date_type
 
+                # type: ignore[assignment]
                 if isinstance(value, str):
-                    dt = datetime.strptime(value, "%Y-%m-%d")
+                    try:  # type: ignore[assignment]
+                        dt = datetime.strptime(value, "%Y-%m-%d").date()  # type: ignore[assignment]
+                    except ValueError:  # type: ignore[assignment]
+                        dt = datetime.fromisoformat(value.replace(" ", "T")).date()  # type: ignore[assignment]
+                elif isinstance(value, datetime):  # type: ignore[assignment]
+                    dt = value.date()  # type: ignore[assignment]
+                elif isinstance(value, date_type):
+                    dt = value  # type: ignore[assignment]
                 else:
                     dt = value
-                return dt - timedelta(days=1)  # Simplified: always subtract 1 day
+                return dt - timedelta(
+                    days=1
+                )  # Simplified: always subtract 1 day in fallback
             except (ValueError, AttributeError):
                 return None
         elif operation_type == "datediff":

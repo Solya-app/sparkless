@@ -1556,13 +1556,27 @@ class ExpressionEvaluator:
 
     def _evaluate_to_date_function(self, row: Dict[str, Any], col_name: str) -> Any:
         """Evaluate to_date function."""
-        # Extract column name from function call
-        match = re.search(r"to_date\(([^)]+)\)", col_name)
+        # Extract column name and optional format from function call
+        # Handles both to_date(col) and to_date(col, 'format')
+        match = re.search(r"to_date\(([^,)]+)(?:,\s*'([^']*)')?\)", col_name)
         if match:
-            column_name = match.group(1)
+            column_name = match.group(1).strip()
+            fmt = match.group(2)  # None if no format provided
             value = get_row_value(row, column_name)
             if value is not None:
                 try:
+                    if fmt and isinstance(value, str):
+                        # Convert Java/Spark date format to Python strftime format
+                        python_fmt = (
+                            fmt.replace("yyyy", "%Y")
+                            .replace("yy", "%y")
+                            .replace("MM", "%m")
+                            .replace("dd", "%d")
+                            .replace("HH", "%H")
+                            .replace("mm", "%M")
+                            .replace("ss", "%S")
+                        )
+                        return dt_module.datetime.strptime(value, python_fmt).date()
                     # Try to parse as datetime first, then extract date
                     if isinstance(value, str):
                         dt = dt_module.datetime.fromisoformat(
@@ -2376,8 +2390,24 @@ class ExpressionEvaluator:
         """Split function."""
         if value is None:
             return []
-        delimiter = operation.value
-        return str(value).split(delimiter)
+        import re as re_split_mod
+
+        # operation.value is (pattern, limit) tuple or just a string delimiter
+        if isinstance(operation.value, tuple) and len(operation.value) >= 1:
+            pattern = operation.value[0]
+            limit = operation.value[1] if len(operation.value) > 1 else None
+            if limit is not None and limit > 0:
+                # PySpark limit=N means N parts (split at most N-1 times)
+                if limit == 1:
+                    # limit=1 means no split at all, return original as single-element list
+                    return [str(value)]
+                return re_split_mod.split(pattern, str(value), maxsplit=limit - 1)
+            else:
+                # limit is None, 0, or negative: split all
+                return re_split_mod.split(pattern, str(value))
+        elif isinstance(operation.value, str):
+            return re_split_mod.split(operation.value, str(value))
+        return str(value).split()
 
     def _func_regexp_replace(self, value: Any, operation: ColumnOperation) -> str:
         """Regex replace function."""
@@ -3575,6 +3605,20 @@ class ExpressionEvaluator:
         if value is None:
             return None
         try:
+            # Check if a format string was provided via operation.value
+            fmt = getattr(operation, "value", None)
+            if fmt and isinstance(fmt, str):
+                # Convert Java/Spark date format to Python strftime format
+                python_fmt = (
+                    fmt.replace("yyyy", "%Y")
+                    .replace("yy", "%y")
+                    .replace("MM", "%m")
+                    .replace("dd", "%d")
+                    .replace("HH", "%H")
+                    .replace("mm", "%M")
+                    .replace("ss", "%S")
+                )
+                return dt_module.datetime.strptime(str(value), python_fmt).date()
             if isinstance(value, str):
                 # Accept 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS[.fff]'
                 date_part = value.strip().split(" ")[0]

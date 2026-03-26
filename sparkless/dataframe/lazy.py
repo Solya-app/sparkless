@@ -1492,6 +1492,60 @@ class LazyEvaluationEngine:
                                         new_row[col_name] = None
                                     new_data.append(new_row)
 
+                                # Sort data by window spec's partition_by + order_by columns
+                                # to match PySpark's output ordering after window operations
+                                _ws = window_func.window_spec
+                                _pb = getattr(_ws, "_partition_by", [])
+                                _ob = getattr(_ws, "_order_by", [])
+                                if _pb or _ob:
+                                    import functools
+
+                                    _sort_cols = list(_pb) + list(_ob)
+
+                                    def _window_sort_key(
+                                        a: Dict[str, Any], b: Dict[str, Any]
+                                    ) -> int:
+                                        for _sc in _sort_cols:
+                                            _is_desc = False
+                                            if hasattr(_sc, "column") and hasattr(
+                                                _sc.column, "name"
+                                            ):
+                                                _cn = _sc.column.name
+                                                _sop = getattr(_sc, "operation", None)
+                                            elif hasattr(_sc, "name"):
+                                                _cn = _sc.name
+                                                _sop = getattr(_sc, "operation", None)
+                                            else:
+                                                _cn = str(_sc)
+                                                _sop = None
+                                            if _sop in (
+                                                "desc",
+                                                "desc_nulls_last",
+                                                "desc_nulls_first",
+                                            ):
+                                                _is_desc = True
+                                            va = get_row_value(a, _cn)
+                                            vb = get_row_value(b, _cn)
+                                            if va is None and vb is None:
+                                                continue
+                                            if va is None:
+                                                return 1
+                                            if vb is None:
+                                                return -1
+                                            try:
+                                                if va < vb:
+                                                    return 1 if _is_desc else -1
+                                                elif va > vb:
+                                                    return -1 if _is_desc else 1
+                                            except TypeError:
+                                                pass
+                                        return 0
+
+                                    new_data = sorted(
+                                        new_data,
+                                        key=functools.cmp_to_key(_window_sort_key),
+                                    )
+
                             except _EVALUATION_FAILURE_EXCEPTIONS:
                                 # If window function evaluation fails, set all to None
                                 new_data = []
@@ -1556,6 +1610,12 @@ class LazyEvaluationEngine:
                             # Regular expression - use ExpressionEvaluator
                             evaluator = ExpressionEvaluator(current)
 
+                            # Check if this is an explode operation
+                            is_explode = (
+                                isinstance(col, ColumnOperation)
+                                and getattr(col, "operation", None) == "explode"
+                            )
+
                             # Evaluate the column expression for each row
                             new_data = []
                             for row in current.data:
@@ -1563,6 +1623,15 @@ class LazyEvaluationEngine:
                                 try:
                                     # Evaluate the column expression
                                     col_value = evaluator.evaluate_expression(row, col)
+                                    if is_explode and isinstance(
+                                        col_value, (list, tuple)
+                                    ):
+                                        # Expand rows for explode
+                                        for item in col_value:
+                                            expanded_row = row.copy()
+                                            expanded_row[col_name] = item
+                                            new_data.append(expanded_row)
+                                        continue
                                     new_row[col_name] = col_value
                                 except _EVALUATION_FAILURE_EXCEPTIONS:
                                     # If evaluation fails, set to None
@@ -2510,6 +2579,10 @@ class LazyEvaluationEngine:
                             key = f"{left_alias}_{col}" if left_alias else col
                             rkey = f"{right_alias}_{col}" if right_alias else col
                             join_conditions.append((key, rkey))
+                    elif hasattr(on, "operation") and on.operation not in ("==", "&"):
+                        # Non-equality ColumnOperation (e.g. array_contains, custom conditions)
+                        # Treat as compound condition to be evaluated by ConditionEvaluator
+                        use_compound_condition = True
                     else:
                         col_name = on.name if hasattr(on, "name") else str(on)
                         key = f"{left_alias}_{col_name}" if left_alias else col_name
@@ -2575,6 +2648,14 @@ class LazyEvaluationEngine:
                                     "leftsemi",
                                 ]:
                                     joined_data.append(dict(left_row_p))
+                                    break
+                                elif how.lower() in [
+                                    "anti",
+                                    "left_anti",
+                                    "leftanti",
+                                ]:
+                                    # Anti-join: match found means this left row should NOT be included
+                                    break
                                 else:
                                     merged = {**left_row_p, **right_row_p}
                                     # For same-name join keys, preserve the value with the wider type
@@ -2607,8 +2688,6 @@ class LazyEvaluationEngine:
                                                     else:
                                                         merged[lk] = lval
                                     joined_data.append(merged)
-                                if how.lower() in ["inner", "inner_join"]:
-                                    break
 
                         if not matched and how.lower() in [
                             "anti",
@@ -2986,6 +3065,13 @@ class LazyEvaluationEngine:
                             new_data.append(new_row)
 
                         current = DataFrame(new_data, current.schema, current.storage)
+                elif op_name == "limit":
+                    # Limit number of rows
+                    n = int(op_val)
+                    current = DataFrame(
+                        current.data[:n], current.schema, current.storage
+                    )
+                    current._is_cached = getattr(current, "_is_cached", False)
                 else:
                     # Unknown ops ignored for now
                     continue
