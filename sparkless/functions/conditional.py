@@ -440,6 +440,16 @@ class CaseWhen:
             if left_value is None or right_value is None:
                 return None
 
+            # String-to-numeric coercion for arithmetic (PySpark auto-casts)
+            if isinstance(left_value, str) or isinstance(right_value, str):
+                try:
+                    if isinstance(left_value, str):
+                        left_value = float(left_value)
+                    if isinstance(right_value, str):
+                        right_value = float(right_value)
+                except (ValueError, TypeError):
+                    return None
+
             if operation.operation == "+":
                 return left_value + right_value
             elif operation.operation == "-":

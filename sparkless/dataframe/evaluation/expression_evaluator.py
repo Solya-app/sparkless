@@ -3634,10 +3634,34 @@ class ExpressionEvaluator:
         if value is None:
             return None
         try:
+            # Extract format from operation.value (may be a Literal or string)
+            fmt = operation.value if hasattr(operation, "value") else None
+            if fmt is not None and hasattr(fmt, "value"):
+                fmt = fmt.value  # Unwrap Literal
+
             if isinstance(value, str):
+                if fmt and isinstance(fmt, str):
+                    # Convert Java/Spark format to Python strftime
+                    py_fmt = (
+                        fmt.replace("yyyy", "%Y")
+                        .replace("yy", "%y")
+                        .replace("MM", "%m")
+                        .replace("dd", "%d")
+                        .replace("HH", "%H")
+                        .replace("mm", "%M")
+                        .replace("ss", "%S")
+                        .replace("SSS", "%f")
+                    )
+                    return dt_module.datetime.strptime(value, py_fmt)
                 return dt_module.datetime.fromisoformat(
                     value.replace("Z", "+00:00").replace(" ", "T")
                 )
+            if isinstance(value, dt_module.date) and not isinstance(
+                value, dt_module.datetime
+            ):
+                return dt_module.datetime(value.year, value.month, value.day)
+            if isinstance(value, dt_module.datetime):
+                return value
         except Exception:
             return None
         return None

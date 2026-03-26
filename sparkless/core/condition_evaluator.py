@@ -52,6 +52,12 @@ class ConditionEvaluator:
         if isinstance(condition, Column):
             return get_row_value(row, condition.name) is not None
 
+        # Unwrap Literal objects
+        if hasattr(condition, "value") and not isinstance(
+            condition, (Column, ColumnOperation)
+        ):
+            return bool(condition.value) if condition.value is not None else False
+
         # For simple values, check if truthy
         return bool(condition) if condition is not None else False
 
@@ -209,6 +215,7 @@ class ConditionEvaluator:
             "current_timestamp",
             "to_date",
             "to_timestamp",
+            "try_to_timestamp",
             "hour",
             "day",
             "dayofmonth",
@@ -1237,6 +1244,33 @@ class ConditionEvaluator:
             except ValueError:
                 return None
 
+        elif operation_type == "try_to_timestamp":
+            if col_value is None:
+                return None
+            try:
+                from datetime import datetime
+
+                fmt_val: Any = getattr(operation, "value", None)
+                if hasattr(fmt_val, "value"):
+                    fmt_val = fmt_val.value  # Unwrap Literal
+                if fmt_val and isinstance(fmt_val, str):
+                    python_fmt = (
+                        fmt_val.replace("yyyy", "%Y")
+                        .replace("yy", "%y")
+                        .replace("MM", "%m")
+                        .replace("dd", "%d")
+                        .replace("HH", "%H")
+                        .replace("mm", "%M")
+                        .replace("ss", "%S")
+                    )
+                    return datetime.strptime(str(col_value), python_fmt)
+                try:
+                    return datetime.fromisoformat(str(col_value).replace(" ", "T"))
+                except ValueError:
+                    return datetime.strptime(str(col_value), "%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                return None
+
         elif operation_type == "log":
             import math
 
@@ -1395,6 +1429,21 @@ class ConditionEvaluator:
         left_value = ConditionEvaluator._get_column_value(row, operation.column)
         right_value = ConditionEvaluator._get_column_value(row, operation.value)
 
+        # Resolve CaseWhen objects that _get_column_value doesn't handle
+        if hasattr(left_value, "evaluate") and hasattr(left_value, "conditions"):
+            left_value = left_value.evaluate(row)
+        if hasattr(right_value, "evaluate") and hasattr(right_value, "conditions"):
+            right_value = right_value.evaluate(row)
+        # Unwrap Literal objects
+        if hasattr(left_value, "value") and not isinstance(
+            left_value, (Column, ColumnOperation)
+        ):
+            left_value = left_value.value
+        if hasattr(right_value, "value") and not isinstance(
+            right_value, (Column, ColumnOperation)
+        ):
+            right_value = right_value.value
+
         if left_value is None or right_value is None:
             return False
 
@@ -1477,6 +1526,10 @@ class ConditionEvaluator:
                 right_val = ConditionEvaluator._get_column_value(row, right_val)
             elif hasattr(right_val, "evaluate") and hasattr(right_val, "conditions"):
                 right_val = right_val.evaluate(row)
+            elif hasattr(right_val, "value") and not isinstance(
+                right_val, (Column, ColumnOperation)
+            ):
+                right_val = right_val.value  # Unwrap Literal
             return ConditionEvaluator._evaluate_comparison(col_value, op_str, right_val)
 
         # String operations
@@ -1569,6 +1622,7 @@ class ConditionEvaluator:
             "current_timestamp",
             "to_date",
             "to_timestamp",
+            "try_to_timestamp",
             "hour",
             "day",
             "dayofmonth",
@@ -1888,15 +1942,18 @@ class ConditionEvaluator:
                 return datetime.strptime(str(value), "%Y-%m-%d").date()
             except ValueError:
                 return None
-        elif operation_type == "to_timestamp":
-            # For to_timestamp, we need a format - this is a simplified version
+        elif operation_type in ("to_timestamp", "try_to_timestamp"):
             if value is None:
                 return None
             try:
                 from datetime import datetime
 
-                return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
-            except ValueError:
+                # Default ISO-like formats (format from operation handled in _evaluate_function_operation_value)
+                try:
+                    return datetime.fromisoformat(str(value).replace(" ", "T"))
+                except ValueError:
+                    return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
                 return None
         elif operation_type == "hour":
             if value is None:

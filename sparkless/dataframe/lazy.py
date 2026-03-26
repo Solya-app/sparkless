@@ -1610,6 +1610,20 @@ class LazyEvaluationEngine:
                                 except _EVALUATION_FAILURE_EXCEPTIONS:
                                     new_row[col_name] = None
                                 new_data.append(new_row)
+                        elif (
+                            hasattr(col, "conditions")
+                            and hasattr(col, "evaluate")
+                            and not isinstance(col, ColumnOperation)
+                        ):
+                            # Pure CaseWhen expression (not wrapped in ColumnOperation) - use its own evaluate() method
+                            new_data = []
+                            for row in current.data:
+                                new_row = row.copy()
+                                try:
+                                    new_row[col_name] = col.evaluate(row)
+                                except _EVALUATION_FAILURE_EXCEPTIONS:
+                                    new_row[col_name] = None
+                                new_data.append(new_row)
                         else:
                             # Regular expression - use ExpressionEvaluator
                             evaluator = ExpressionEvaluator(current)
