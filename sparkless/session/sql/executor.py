@@ -233,7 +233,10 @@ class SQLExecutor:
                             "alias", table_aliases.get(table2_name, table2_name)
                         )
                         # Check if table is a CTE
-                        if hasattr(self, "_temp_views") and table2_name in self._temp_views:
+                        if (
+                            hasattr(self, "_temp_views")
+                            and table2_name in self._temp_views
+                        ):
                             df2_any = self._temp_views[table2_name]
                         else:
                             df2_any = self.session.table(table2_name)
