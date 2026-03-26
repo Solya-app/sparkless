@@ -217,6 +217,30 @@ class ConditionEvaluator:
             "concat_ws",
             "pi",
             "e",
+            "substr",
+            "substring",
+            "translate",
+            "substring_index",
+            "levenshtein",
+            "soundex",
+            "regexp_extract",
+            "regexp_extract_all",
+            "create_map",
+            "udf",
+            "date_trunc",
+            "date_format",
+            "lpad",
+            "rpad",
+            "replace",
+            "reverse",
+            "repeat",
+            "like",
+            "rlike",
+            "contains",
+            "startswith",
+            "endswith",
+            "getItem",
+            "getField",
         ]:
             return ConditionEvaluator._evaluate_function_operation_value(row, operation)
 
@@ -534,6 +558,264 @@ class ConditionEvaluator:
             except TypeError:
                 # If items are not directly comparable, convert to strings
                 return sorted(col_value, key=str, reverse=not asc)
+        elif operation_type in ("substr", "substring"):
+            if col_value is None:
+                return None
+            s = str(col_value)
+            # operation.value is (start, length) tuple
+            params = operation.value
+            if isinstance(params, tuple) and len(params) >= 2:
+                start, length = int(params[0]), int(params[1])
+            elif isinstance(params, (int, float)):
+                start, length = int(params), len(s)
+            else:
+                return None
+            # PySpark substr is 1-based
+            if start > 0:
+                idx = start - 1
+            elif start < 0:
+                idx = max(0, len(s) + start)
+            else:
+                idx = 0
+            return s[idx : idx + length]
+
+        elif operation_type == "translate":
+            if col_value is None:
+                return None
+            # operation.value is (matching, replace) tuple
+            params = operation.value
+            if isinstance(params, tuple) and len(params) >= 2:
+                matching, replace = str(params[0]), str(params[1])
+                table = str.maketrans(matching, replace[:len(matching)].ljust(len(matching), '\x00'))
+                return str(col_value).translate(table).replace('\x00', '')
+            return str(col_value)
+
+        elif operation_type == "substring_index":
+            if col_value is None:
+                return None
+            params = operation.value
+            if isinstance(params, tuple) and len(params) >= 2:
+                delim, count = str(params[0]), int(params[1])
+                parts = str(col_value).split(delim)
+                if count > 0:
+                    return delim.join(parts[:count])
+                elif count < 0:
+                    return delim.join(parts[count:])
+            return str(col_value)
+
+        elif operation_type == "levenshtein":
+            val1 = str(col_value) if col_value is not None else ""
+            val2_raw = ConditionEvaluator._get_column_value(row, operation.value)
+            val2 = str(val2_raw) if val2_raw is not None else ""
+            if col_value is None or val2_raw is None:
+                return None
+            # DP edit distance
+            m, n = len(val1), len(val2)
+            dp = list(range(n + 1))
+            for i in range(1, m + 1):
+                prev, dp[0] = dp[0], i
+                for j in range(1, n + 1):
+                    temp = dp[j]
+                    dp[j] = prev if val1[i - 1] == val2[j - 1] else 1 + min(dp[j], dp[j - 1], prev)
+                    prev = temp
+            return dp[n]
+
+        elif operation_type == "soundex":
+            if col_value is None:
+                return None
+            s = str(col_value).upper()
+            if not s:
+                return ""
+            codes = {"B": "1", "F": "1", "P": "1", "V": "1",
+                     "C": "2", "G": "2", "J": "2", "K": "2", "Q": "2", "S": "2", "X": "2", "Z": "2",
+                     "D": "3", "T": "3", "L": "4", "M": "5", "N": "5", "R": "6"}
+            result = s[0]
+            prev = codes.get(s[0], "0")
+            for c in s[1:]:
+                code = codes.get(c, "0")
+                if code != "0" and code != prev:
+                    result += code
+                prev = code if code != "0" else prev
+            return (result + "000")[:4]
+
+        elif operation_type == "regexp_extract":
+            if col_value is None:
+                return None
+            import re as re_mod
+            params = operation.value
+            if isinstance(params, tuple) and len(params) >= 2:
+                pattern, idx = str(params[0]), int(params[1])
+                match = re_mod.search(pattern, str(col_value))
+                if match:
+                    try:
+                        return match.group(idx)
+                    except IndexError:
+                        return ""
+                return ""
+            return ""
+
+        elif operation_type == "regexp_extract_all":
+            if col_value is None:
+                return None
+            import re as re_mod
+            params = operation.value
+            pattern = str(params) if not isinstance(params, tuple) else str(params[0])
+            return re_mod.findall(pattern, str(col_value))
+
+        elif operation_type == "create_map":
+            # operation.value is a tuple of (key_col, val_col, key_col, val_col, ...)
+            args = operation.value if operation.value else ()
+            if not args:
+                return {}
+            result_map = {}
+            items = list(args)
+            for j in range(0, len(items) - 1, 2):
+                k = ConditionEvaluator._get_column_value(row, items[j])
+                v = ConditionEvaluator._get_column_value(row, items[j + 1])
+                result_map[k] = v
+            return result_map
+
+        elif operation_type == "udf":
+            udf_func = getattr(operation, "_udf_func", None)
+            udf_cols = getattr(operation, "_udf_cols", None)
+            if udf_func is None:
+                return None
+            args = []
+            if udf_cols:
+                for col_ref in udf_cols:
+                    val = ConditionEvaluator._get_column_value(row, col_ref)
+                    args.append(val)
+            else:
+                args.append(col_value)
+            try:
+                return udf_func(*args)
+            except Exception:
+                return None
+
+        elif operation_type == "date_trunc":
+            if col_value is None:
+                return None
+            from datetime import datetime, date
+            unit = str(operation.value).lower() if operation.value else "day"
+            dt = col_value
+            if isinstance(dt, str):
+                try:
+                    dt = datetime.fromisoformat(dt.replace(" ", "T"))
+                except ValueError:
+                    return None
+            if isinstance(dt, date) and not isinstance(dt, datetime):
+                dt = datetime(dt.year, dt.month, dt.day)
+            if not isinstance(dt, datetime):
+                return None
+            if unit in ("year", "yyyy", "yy"):
+                return dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            elif unit in ("month", "mon", "mm"):
+                return dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            elif unit in ("day", "dd"):
+                return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif unit in ("hour",):
+                return dt.replace(minute=0, second=0, microsecond=0)
+            elif unit in ("minute",):
+                return dt.replace(second=0, microsecond=0)
+            elif unit in ("second",):
+                return dt.replace(microsecond=0)
+            return dt
+
+        elif operation_type == "date_format":
+            if col_value is None:
+                return None
+            from datetime import datetime, date
+            fmt = str(operation.value) if operation.value else "yyyy-MM-dd"
+            dt = col_value
+            if isinstance(dt, str):
+                try:
+                    dt = datetime.fromisoformat(dt.replace(" ", "T"))
+                except ValueError:
+                    return None
+            if isinstance(dt, date) and not isinstance(dt, datetime):
+                dt = datetime(dt.year, dt.month, dt.day)
+            if not isinstance(dt, datetime):
+                return None
+            # Convert Java-style format to Python strftime
+            py_fmt = fmt.replace("yyyy", "%Y").replace("yy", "%y").replace("MM", "%m").replace("dd", "%d").replace("HH", "%H").replace("mm", "%M").replace("ss", "%S")
+            return dt.strftime(py_fmt)
+
+        elif operation_type in ("lpad", "rpad"):
+            if col_value is None:
+                return None
+            params = operation.value
+            if isinstance(params, tuple) and len(params) >= 2:
+                length, pad = int(params[0]), str(params[1])
+                s = str(col_value)
+                if operation_type == "lpad":
+                    return s.rjust(length, pad[0]) if pad else s
+                else:
+                    return s.ljust(length, pad[0]) if pad else s
+            return str(col_value)
+
+        elif operation_type == "replace":
+            if col_value is None:
+                return None
+            params = operation.value
+            if isinstance(params, tuple) and len(params) >= 2:
+                return str(col_value).replace(str(params[0]), str(params[1]))
+            return str(col_value)
+
+        elif operation_type == "reverse":
+            if col_value is None:
+                return None
+            if isinstance(col_value, list):
+                return list(reversed(col_value))
+            return str(col_value)[::-1]
+
+        elif operation_type == "repeat":
+            if col_value is None:
+                return None
+            n = int(operation.value) if operation.value else 1
+            return str(col_value) * n
+
+        elif operation_type in ("like", "rlike"):
+            if col_value is None:
+                return None
+            import re as re_mod
+            pattern = str(operation.value)
+            if operation_type == "like":
+                # Convert SQL LIKE to regex
+                regex = "^" + pattern.replace("%", ".*").replace("_", ".") + "$"
+                return bool(re_mod.match(regex, str(col_value)))
+            else:
+                return bool(re_mod.search(pattern, str(col_value)))
+
+        elif operation_type == "contains":
+            if col_value is None:
+                return None
+            return str(operation.value) in str(col_value)
+
+        elif operation_type in ("startswith", "startsWith"):
+            if col_value is None:
+                return None
+            return str(col_value).startswith(str(operation.value))
+
+        elif operation_type in ("endswith", "endsWith"):
+            if col_value is None:
+                return None
+            return str(col_value).endswith(str(operation.value))
+
+        elif operation_type in ("getItem", "getField"):
+            if col_value is None:
+                return None
+            key = operation.value
+            if isinstance(key, Column):
+                key = ConditionEvaluator._get_column_value(row, key)
+            if isinstance(col_value, dict):
+                return col_value.get(key)
+            elif isinstance(col_value, (list, tuple)):
+                try:
+                    return col_value[int(key)]
+                except (IndexError, TypeError, ValueError):
+                    return None
+            return None
+
         else:
             # For other functions, delegate to the existing function evaluation
             # operation_type is guaranteed to be a string in ColumnOperation

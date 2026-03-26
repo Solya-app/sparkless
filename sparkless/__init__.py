@@ -226,13 +226,3 @@ from . import sql  # noqa: E402
 # Register sql module in sys.modules
 sys.modules["sparkless.sql"] = sql
 
-# ==============================================================================
-# ROBIN NATIVE EXTENSION - Expose sparkless_robin as sparkless._robin
-# ==============================================================================
-# The PyO3 extension is built as sparkless_robin (top-level). Expose it as
-# sparkless._robin for native.py and any code doing "from sparkless import _robin".
-try:
-    import sparkless_robin as _robin  # noqa: F401
-    sys.modules["sparkless._robin"] = _robin
-except ImportError:
-    _robin = None  # type: ignore[assignment]

@@ -292,6 +292,24 @@ class ExpressionEvaluator:
         elif op == "-" and operation.value is None:
             return self._evaluate_arithmetic_operation(row, operation)
 
+        # Handle UDF operations
+        elif op == "udf":
+            udf_func = getattr(operation, "_udf_func", None)
+            udf_cols = getattr(operation, "_udf_cols", None)
+            if udf_func is None:
+                return None
+            args = []
+            if udf_cols:
+                for col_ref in udf_cols:
+                    val = self.evaluate_expression(row, col_ref, row_index=row_index)
+                    args.append(val)
+            else:
+                args.append(self.evaluate_expression(row, operation.column, row_index=row_index))
+            try:
+                return udf_func(*args)
+            except Exception:
+                return None
+
         # For unknown operations, try to evaluate as function call
         else:
             try:

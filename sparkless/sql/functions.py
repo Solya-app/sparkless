@@ -72,8 +72,7 @@ def __getattr__(name: str) -> object:
 
         def _udf_stub(*args: Any, **kwargs: Any) -> Any:
             raise NotImplementedError(
-                "udf is not implemented for the Robin backend. "
-                "Use tests/robin_skip_list.json for tests that require UDFs, or see docs/robin_parity_matrix.md."
+                "udf is not implemented in sparkless."
             )
 
         _cached_attrs[name] = _udf_stub
