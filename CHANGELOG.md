@@ -1,3 +1,10 @@
+# [3.29.0](https://github.com/Solya-app/sparkless/compare/v3.28.0...v3.29.0) (2026-03-26)
+
+
+### Features
+
+* **sql:** add ALTER TABLE support ([#7](https://github.com/Solya-app/sparkless/issues/7)) ([a1741c5](https://github.com/Solya-app/sparkless/commit/a1741c5c92d3b8306dd50a5d42944ba2257ab85a))
+
 # [3.28.0](https://github.com/Solya-app/sparkless/compare/v3.27.0...v3.28.0) (2026-03-26)
 
 
