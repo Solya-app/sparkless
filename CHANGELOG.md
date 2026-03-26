@@ -1,3 +1,17 @@
+# [4.2.0](https://github.com/Solya-app/sparkless/compare/v4.1.1...v4.2.0) (2026-03-26)
+
+
+### Bug Fixes
+
+* CaseWhen/Literal resolution in filters, try_to_timestamp format (v5.8.0) ([876f907](https://github.com/Solya-app/sparkless/commit/876f907ecaf6b29876afd7e1904d85c99061cd30))
+* resolve CaseWhen comparison and rlike filter bugs (v5.1.0) ([96c255a](https://github.com/Solya-app/sparkless/commit/96c255aea0853dd17c30aea5a8a24f20344c9a02))
+
+
+### Features
+
+* **sql:** add RESTORE TABLE SQL command support ([#5](https://github.com/Solya-app/sparkless/issues/5)) ([286d86b](https://github.com/Solya-app/sparkless/commit/286d86b2d325fce25cea5060e174c0d02e3c10b7))
+* **sql:** add VACUUM SQL command support ([#6](https://github.com/Solya-app/sparkless/issues/6)) ([0b775a4](https://github.com/Solya-app/sparkless/commit/0b775a4271d9f259adc424bdb8eeb85139c655cb))
+
 ## [4.3.1](https://github.com/Solya-app/sparkless/compare/v4.3.0...v4.3.1) (2026-03-26)
 
 
