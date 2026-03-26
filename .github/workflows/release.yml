@@ -84,7 +84,6 @@ jobs:
         run: |
           twine upload \
             --non-interactive \
-            --skip-existing \
             --repository-url "https://pkgs.dev.azure.com/${AZURE_DEVOPS_ORG}/${AZURE_DEVOPS_PROJECT}/_packaging/${AZURE_DEVOPS_FEED}/pypi/upload/" \
             --username _ \
             --password "${AZURE_DEVOPS_PAT}" \
