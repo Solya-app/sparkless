@@ -622,7 +622,11 @@ class LazyEvaluationEngine:
                         )
                 normalized.append((op_name, (new_order_cols, ascending)))
             elif op_name == "drop":
-                if isinstance(op_val, (list, tuple)):
+                if isinstance(op_val, str):
+                    resolved_drop = resolve_name(op_val, current_cols)
+                    normalized.append((op_name, resolved_drop))
+                    current_cols = [c for c in current_cols if c != resolved_drop]
+                elif isinstance(op_val, (list, tuple)):
                     new_drop = [resolve_name(c, current_cols) for c in op_val]
                     normalized.append((op_name, new_drop))
                     current_cols = [c for c in current_cols if c not in new_drop]
