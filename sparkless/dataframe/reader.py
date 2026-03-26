@@ -321,11 +321,10 @@ class DataFrameReader:
             pdf = pd.read_parquet(str(Path(p).resolve()))
             all_rows.extend(pdf.to_dict(orient="records"))
 
-        schema: StructType = (
-            SchemaInferenceEngine.infer_from_data(all_rows)  # type: ignore[assignment]
-            if all_rows
-            else StructType([])
-        )
+        if all_rows:
+            schema, all_rows = SchemaInferenceEngine.infer_from_data(all_rows)
+        else:
+            schema = StructType([])
         return schema, all_rows
 
     def _read_csv(
@@ -344,6 +343,7 @@ class DataFrameReader:
 
         header = options.get("header", "true").lower() == "true"
         sep = options.get("sep", options.get("delimiter", ","))
+        encoding = options.get("encoding", "utf-8")
 
         all_rows: List[Dict[str, Any]] = []
         for p in paths:
@@ -351,14 +351,14 @@ class DataFrameReader:
                 str(Path(p).resolve()),
                 header=0 if header else None,
                 sep=sep,
+                encoding=encoding,
             )
             all_rows.extend(pdf.to_dict(orient="records"))
 
-        schema: StructType = (
-            SchemaInferenceEngine.infer_from_data(all_rows)  # type: ignore[assignment]
-            if all_rows
-            else StructType([])
-        )
+        if all_rows:
+            schema, all_rows = SchemaInferenceEngine.infer_from_data(all_rows)
+        else:
+            schema = StructType([])
         return schema, all_rows
 
     def _read_json(
@@ -369,31 +369,41 @@ class DataFrameReader:
 
         from ..core.schema_inference import SchemaInferenceEngine
 
+        encoding = options.get("encoding", "utf-8")
+        multi_line = str(options.get("multiLine", "false")).lower() == "true"
+
         all_rows: List[Dict[str, Any]] = []
         for p in paths:
-            with open(str(Path(p).resolve()), encoding="utf-8") as f:
+            with open(str(Path(p).resolve()), encoding=encoding) as f:
                 content = f.read().strip()
                 if not content:
                     continue
-                # Try NDJSON first (one JSON object per line)
-                try:
-                    for line in content.splitlines():
-                        line = line.strip()
-                        if line:
-                            all_rows.append(json_lib.loads(line))
-                except json_lib.JSONDecodeError:
-                    # Fallback to standard JSON array
+                if multi_line:
+                    # Read as single JSON object/array
                     data = json_lib.loads(content)
                     if isinstance(data, list):
                         all_rows.extend(data)
                     else:
                         all_rows.append(data)
+                else:
+                    # Try NDJSON first (one JSON object per line)
+                    try:
+                        for line in content.splitlines():
+                            line = line.strip()
+                            if line:
+                                all_rows.append(json_lib.loads(line))
+                    except json_lib.JSONDecodeError:
+                        # Fallback to standard JSON array
+                        data = json_lib.loads(content)
+                        if isinstance(data, list):
+                            all_rows.extend(data)
+                        else:
+                            all_rows.append(data)
 
-        schema: StructType = (
-            SchemaInferenceEngine.infer_from_data(all_rows)  # type: ignore[assignment]
-            if all_rows
-            else StructType([])
-        )
+        if all_rows:
+            schema, all_rows = SchemaInferenceEngine.infer_from_data(all_rows)
+        else:
+            schema = StructType([])
         return schema, all_rows
 
     def _read_text(self, paths: List[str]) -> Tuple[StructType, List[Dict[str, Any]]]:

@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from .spark_types import StructType
 
 from .functions import Column
+from .functions.base import ColumnOperation
+from .core.condition_evaluator import ConditionEvaluator
 from .core.safe_evaluator import SafeExpressionEvaluator
 from .spark_types import get_row_value
 
@@ -132,14 +134,20 @@ class DeltaTable:
         return self
 
     # Mock operations - don't actually execute
-    def delete(self, condition: Union[str, None] = None) -> None:
+    def delete(self, condition: Union[str, Column, None] = None) -> None:
         """Delete rows matching the given condition."""
         rows = self._load_table_rows()
         schema = self._current_schema()
         alias = getattr(self, "_alias", "target")
 
-        if not condition:
+        if not condition and condition is not False:  # type: ignore[comparison-overlap]
             remaining_rows: List[Dict[str, Any]] = []
+        elif isinstance(condition, (Column, ColumnOperation)):
+            remaining_rows = [
+                row
+                for row in rows
+                if not ConditionEvaluator.evaluate_condition(row, condition)
+            ]
         else:
             normalized = _normalize_boolean_expression(condition)
             remaining_rows = [
@@ -151,7 +159,11 @@ class DeltaTable:
         new_df = self._spark.createDataFrame(remaining_rows, schema)
         self._overwrite_table(new_df)
 
-    def update(self, condition: str, set_values: Dict[str, Any]) -> None:
+    def update(
+        self,
+        condition: Union[str, Column, None] = None,
+        set_values: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """Update rows that satisfy condition with provided assignments."""
         if not set_values:
             return
@@ -159,26 +171,42 @@ class DeltaTable:
         rows = self._load_table_rows()
         schema = self._current_schema()
         alias = getattr(self, "_alias", "target")
+        use_column_condition = isinstance(condition, (Column, ColumnOperation))
         normalized_condition = (
-            _normalize_boolean_expression(condition) if condition else None
+            _normalize_boolean_expression(str(condition))
+            if condition and not use_column_condition
+            else None
         )
 
         updated_rows: List[Dict[str, Any]] = []
         for row in rows:
-            should_update = (
-                True
-                if normalized_condition is None
-                else self._evaluate_row_condition(normalized_condition, row, alias)
-            )
+            if use_column_condition:
+                should_update = bool(
+                    ConditionEvaluator.evaluate_condition(row, condition)
+                )
+            elif normalized_condition is None:
+                should_update = True
+            else:
+                should_update = self._evaluate_row_condition(
+                    normalized_condition, row, alias
+                )
+
             if not should_update:
                 updated_rows.append(row)
                 continue
 
             new_row = dict(row)
             for column_name, expression in set_values.items():
-                new_row[column_name] = self._evaluate_update_expression(
-                    expression, new_row, alias
-                )
+                if isinstance(expression, (Column, ColumnOperation)) or (
+                    hasattr(expression, "value") and not isinstance(expression, str)
+                ):
+                    new_row[column_name] = ConditionEvaluator._get_column_value(
+                        new_row, expression
+                    )
+                else:
+                    new_row[column_name] = self._evaluate_update_expression(
+                        expression, new_row, alias
+                    )
             updated_rows.append(new_row)
 
         new_df = self._spark.createDataFrame(updated_rows, schema)
@@ -197,17 +225,17 @@ class DeltaTable:
         """Mock vacuum (no-op)."""
         pass
 
-    def optimize(self) -> DeltaTable:
+    def optimize(self) -> DeltaOptimizeBuilder:
         """
         Mock OPTIMIZE operation.
 
         In real Delta Lake, this compacts small files.
-        For testing, this is a no-op that returns self.
+        For testing, returns a builder that supports executeCompaction() and zOrderBy().
 
         Returns:
-            self for method chaining
+            DeltaOptimizeBuilder for method chaining
         """
-        return self
+        return DeltaOptimizeBuilder(self)
 
     def detail(self) -> DataFrame:
         """
@@ -381,10 +409,8 @@ class DeltaTable:
     def _evaluate_update_expression(
         self, expression: Any, row: Dict[str, Any], alias: str
     ) -> Any:
-        if hasattr(expression, "operation") or isinstance(expression, Column):
-            raise NotImplementedError(
-                "Column expressions are not supported for DeltaTable.update in mock implementation"
-            )
+        if isinstance(expression, (Column, ColumnOperation)):
+            return ConditionEvaluator._get_column_value(row, expression)
 
         if isinstance(expression, str):
             expr = expression.strip()
@@ -406,6 +432,27 @@ class DeltaTable:
                 )
                 return expr
         return expression
+
+
+class DeltaOptimizeBuilder:
+    """Builder returned by DeltaTable.optimize() for compaction and z-ordering."""
+
+    def __init__(self, delta_table: DeltaTable):
+        self._table = delta_table
+
+    def executeCompaction(self) -> DataFrame:
+        """Execute compaction (no-op). Returns an empty DataFrame."""
+        from .dataframe import DataFrame
+        from .spark_types import StructType
+
+        return DataFrame([], StructType([]), self._table._spark._storage)
+
+    def zOrderBy(self, *cols: str) -> DataFrame:
+        """Z-order by columns (no-op). Returns an empty DataFrame."""
+        from .dataframe import DataFrame
+        from .spark_types import StructType
+
+        return DataFrame([], StructType([]), self._table._spark._storage)
 
 
 class DeltaMergeMatchedActionBuilder:
