@@ -2484,6 +2484,29 @@ class LazyEvaluationEngine:
                             sorted_data, current.schema, current.storage
                         )
                         current._is_cached = getattr(current, "_is_cached", False)
+                elif op_name == "drop":
+                    # Drop columns from current DataFrame
+                    from ..spark_types import StructType as ST_drop
+
+                    columns_to_drop_raw = (
+                        op_val if isinstance(op_val, (list, tuple)) else [op_val]
+                    )
+                    # Column names should already be normalized at this point
+                    columns_to_drop_set = set(columns_to_drop_raw)
+                    new_data = []
+                    for row in current.data:
+                        new_row = {
+                            k: v for k, v in row.items() if k not in columns_to_drop_set
+                        }
+                        new_data.append(new_row)
+                    new_fields = [
+                        field
+                        for field in current.schema.fields
+                        if field.name not in columns_to_drop_set
+                    ]
+                    new_schema = ST_drop(new_fields)
+                    current = DataFrame(new_data, new_schema, current.storage)
+
                 elif op_name == "transform":
                     # Manual transform implementation for higher-order array functions
                     from ..core.condition_evaluator import ConditionEvaluator

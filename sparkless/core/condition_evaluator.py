@@ -615,7 +615,7 @@ class ConditionEvaluator:
             params = operation.value
             if isinstance(params, tuple) and len(params) >= 2:
                 delim, count = str(params[0]), int(params[1])
-                if count == 0:
+                if count == 0 or delim == "":
                     return ""
                 parts = str(col_value).split(delim)
                 if count > 0:
@@ -823,16 +823,31 @@ class ConditionEvaluator:
             return str(col_value).endswith(str(operation.value))
 
         elif operation_type == "xxhash64":
-            # Mock hash function — use Python hash for deterministic results
-            import hashlib
+            # PySpark uses xxhash64 with seed=42
+            SEED = 42
             vals = [col_value]
             if hasattr(operation, "value") and operation.value is not None:
                 extra = operation.value if isinstance(operation.value, (list, tuple)) else [operation.value]
                 for v in extra:
                     vals.append(ConditionEvaluator._get_column_value(row, v))
-            hash_input = "|".join(str(v) if v is not None else "null" for v in vals)
-            h = hashlib.sha256(hash_input.encode()).digest()
-            return int.from_bytes(h[:8], byteorder="big", signed=True)
+            # If all values are None, return the seed (PySpark behavior)
+            if all(v is None for v in vals):
+                return SEED
+            try:
+                import xxhash
+                h = xxhash.xxh64(seed=SEED)
+                for v in vals:
+                    if v is None:
+                        h.update(b"\x00")
+                    else:
+                        h.update(str(v).encode("utf-8"))
+                return h.intdigest()
+            except ImportError:
+                # Fallback if xxhash not installed
+                import hashlib
+                hash_input = "|".join(str(v) if v is not None else "null" for v in vals)
+                h_bytes = hashlib.sha256(hash_input.encode()).digest()
+                return int.from_bytes(h_bytes[:8], byteorder="big", signed=True)
 
         elif operation_type == "get_json_object":
             if col_value is None:
