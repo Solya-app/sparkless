@@ -1683,6 +1683,54 @@ class LazyEvaluationEngine:
                         # Restore current._schema to the projected schema (current.schema will use projection)
                         current._schema = schema_at_operation
                 elif op_name == "select":
+                    # Check for aggregate functions in select (PySpark implicit groupBy)
+                    _AGG_OPS = {
+                        "sum",
+                        "count",
+                        "avg",
+                        "mean",
+                        "min",
+                        "max",
+                        "first",
+                        "last",
+                        "collect_list",
+                        "collect_set",
+                        "count_distinct",
+                        "approx_count_distinct",
+                        "stddev",
+                        "variance",
+                    }
+
+                    def _is_agg_expr(expr: Any) -> bool:
+                        if expr is None:
+                            return False
+                        if (
+                            hasattr(expr, "_original_column")
+                            and expr._original_column is not None
+                        ):
+                            return _is_agg_expr(expr._original_column)
+                        if hasattr(expr, "operation"):
+                            if expr.operation in _AGG_OPS:
+                                return True
+                            if expr.operation == "cast" and hasattr(
+                                expr.column, "operation"
+                            ):
+                                return _is_agg_expr(expr.column)
+                        return False
+
+                    has_aggs = any(_is_agg_expr(c) for c in op_val)
+
+                    if has_aggs:
+                        # Delegate to groupBy().agg() for implicit global aggregation
+                        agg_result = cast(
+                            "DataFrame",
+                            cast("SupportsDataFrameOps", current)
+                            .groupBy()
+                            .agg(*op_val),
+                        )
+                        current = agg_result
+                        continue
+
                     # Manual select implementation
                     from ..core.schema_inference import SchemaInferenceEngine
                     from ..functions.core.column import Column, ColumnOperation
