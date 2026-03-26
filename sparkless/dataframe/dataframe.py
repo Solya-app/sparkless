@@ -324,9 +324,20 @@ class DataFrame:
         """Rename multiple columns."""
         return self._transformations.withColumnsRenamed(colsMap)
 
-    def drop(self, *cols: str) -> "SupportsDataFrameOps":
-        """Drop columns."""
-        return self._transformations.drop(*cols)
+    def drop(self, *cols: Any) -> "SupportsDataFrameOps":
+        """Drop columns. Accepts strings or Column objects."""
+        resolved = []
+        for c in cols:
+            if isinstance(c, str):
+                resolved.append(c)
+            elif hasattr(c, "name"):
+                name = c.name
+                if "." in name:
+                    name = name.split(".")[-1]
+                resolved.append(name)
+            else:
+                resolved.append(str(c))
+        return self._transformations.drop(*resolved)
 
     def distinct(self) -> "SupportsDataFrameOps":
         """Return distinct rows."""

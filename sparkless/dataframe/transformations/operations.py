@@ -320,10 +320,15 @@ class TransformationOperations(Generic[SupportsDF]):
 
     def withColumn(
         self: SupportsDF,
-        col_name: str,
+        col_name: Any,
         col: Union[Column, ColumnOperation, Literal, Any],
     ) -> SupportsDF:
-        """Add or replace column."""
+        """Add or replace column. col_name can be a string or a Column object."""
+        # Accept Column objects as col_name (PySpark compatibility)
+        if hasattr(col_name, "name") and not isinstance(col_name, str):
+            col_name = col_name.name
+        elif not isinstance(col_name, str):
+            col_name = str(col_name)
         # Validate column references in expressions
         if isinstance(col, Column) and not hasattr(col, "operation"):
             # Simple column reference - validate
@@ -394,10 +399,22 @@ class TransformationOperations(Generic[SupportsDF]):
             result = result.withColumnRenamed(old_name, new_name)
         return result
 
-    def drop(self: SupportsDF, *cols: str) -> SupportsDF:
-        """Drop columns (case-insensitive matching)."""
-        # Resolve column names case-insensitively to actual column names
-        cols_lower = {c.lower() for c in cols}
+    def drop(self: SupportsDF, *cols: Any) -> SupportsDF:
+        """Drop columns (case-insensitive matching). Accepts strings or Column objects."""
+        # Convert Column objects to strings
+        str_cols = []
+        for c in cols:
+            if isinstance(c, str):
+                str_cols.append(c)
+            elif hasattr(c, "name"):
+                # Column or ColumnOperation — extract name, handle dot notation
+                name = c.name
+                if "." in name:
+                    name = name.split(".")[-1]
+                str_cols.append(name)
+            else:
+                str_cols.append(str(c))
+        cols_lower = {c.lower() for c in str_cols}
         resolved_cols = {
             actual for actual in self.columns if actual.lower() in cols_lower
         }
