@@ -1145,11 +1145,13 @@ class ConditionEvaluator:
 
         # Comparison operations
         if operation_type in ["==", "!=", ">", ">=", "<", "<="]:
-            # operation_type is guaranteed to be a string in ColumnOperation
             op_str: str = cast("str", operation_type)
-            return ConditionEvaluator._evaluate_comparison(
-                col_value, op_str, operation.value
-            )
+            # Resolve right side: if it's a Column/ColumnOperation, evaluate it;
+            # if it's a literal value (str, int, float, etc.), use directly.
+            right_val = operation.value
+            if isinstance(right_val, (ColumnOperation, Column)):
+                right_val = ConditionEvaluator._get_column_value(row, right_val)
+            return ConditionEvaluator._evaluate_comparison(col_value, op_str, right_val)
 
         # String operations
         if operation_type == "like":
