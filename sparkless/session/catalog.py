@@ -129,6 +129,8 @@ class Catalog:
         self._storage = storage
         self.spark = spark
         self._cached_tables: Set[str] = set()  # Track cached tables
+        self._current_catalog: str = "spark_catalog"  # Default catalog
+        self._temp_views: dict[str, Any] = {}  # Track temporary views
 
     def get_storage_backend(self) -> IStorageManager:
         """Get the storage backend instance.
@@ -176,9 +178,31 @@ class Catalog:
         """Get current catalog name (Spark SQL compatibility).
 
         Returns:
-            Catalog identifier. Sparkless exposes a single catalog.
+            Current catalog identifier.
         """
-        return "spark_catalog"
+        return self._current_catalog
+
+    def setCurrentCatalog(self, catalogName: str) -> None:
+        """Set the current catalog.
+
+        In sparkless, this is a no-op that validates the catalog name but
+        doesn't actually switch catalogs since sparkless uses a single catalog.
+        This is useful for testing code that uses USE CATALOG statements.
+
+        Args:
+            catalogName: Catalog name to set as current.
+
+        Note:
+            This method accepts any catalog name for testing purposes.
+            In production Spark, only valid catalog names would be accepted.
+        """
+        if not isinstance(catalogName, str):
+            raise IllegalArgumentException("Catalog name must be a string")
+
+        if not catalogName:
+            raise IllegalArgumentException("Catalog name cannot be empty")
+
+        self._current_catalog = catalogName
 
     def createDatabase(self, name: str, ignoreIfExists: bool = True) -> None:
         """Create a database.
@@ -570,19 +594,17 @@ class Catalog:
     def dropTempView(self, viewName: str) -> bool:
         """Drop a temporary view. Returns True if the view existed.
 
-        Temp views are stored as tables in the default schema.
-
         Args:
             viewName: Name of the temporary view to drop.
 
         Returns:
             True if the view existed and was dropped, False otherwise.
         """
-        dbName = self._storage.get_current_schema()
-        if self._storage.table_exists(dbName, viewName):
-            self._storage.drop_table(dbName, viewName)
-            return True
-        return False
+        if not isinstance(viewName, str):
+            raise IllegalArgumentException("View name must be a string")
+        if not viewName:
+            raise IllegalArgumentException("View name cannot be empty")
+        return self._storage.drop_temp_view(viewName)
 
     def dropGlobalTempView(self, viewName: str) -> bool:
         """Drop a global temporary view. Returns True if the view existed.
@@ -730,6 +752,18 @@ class Catalog:
         """Clear cache."""
         # Mock implementation - in real Spark this would clear the cache
         pass
+
+    def listLocalTempViews(self) -> list:
+        """List all local temporary views.
+
+        Returns:
+            List of temporary view names.
+
+        Example:
+            >>> spark.catalog.listLocalTempViews()
+            ['view1', 'view2']
+        """
+        return self._storage.list_temp_views()
 
     def _ensure_table_visible(self, schema: str, table: str) -> None:
         """Ensure table is immediately visible in catalog after creation.
