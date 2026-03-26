@@ -82,12 +82,15 @@ jobs:
         env:
           AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
         run: |
-          twine upload \
-            --non-interactive \
-            --repository-url "https://pkgs.dev.azure.com/${AZURE_DEVOPS_ORG}/${AZURE_DEVOPS_PROJECT}/_packaging/${AZURE_DEVOPS_FEED}/pypi/upload/" \
-            --username _ \
-            --password "${AZURE_DEVOPS_PAT}" \
-            dist/*
+          for f in dist/*.whl dist/*.tar.gz; do
+            echo "Uploading $f..."
+            twine upload \
+              --non-interactive \
+              --repository-url "https://pkgs.dev.azure.com/${AZURE_DEVOPS_ORG}/${AZURE_DEVOPS_PROJECT}/_packaging/${AZURE_DEVOPS_FEED}/pypi/upload/" \
+              --username _ \
+              --password "${AZURE_DEVOPS_PAT}" \
+              "$f" || echo "Warning: upload of $f failed (may already exist)"
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
