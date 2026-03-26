@@ -161,6 +161,31 @@ class DataFrameWriter:
         self._options.update(kwargs)
         return self
 
+    def bucketBy(self, numBuckets: int, col: str, *cols: str) -> DataFrameWriter:
+        """Bucket by columns (no-op in sparkless).
+
+        Args:
+            numBuckets: Number of buckets.
+            col: First column to bucket by.
+            *cols: Additional columns to bucket by.
+
+        Returns:
+            Self for method chaining.
+        """
+        return self
+
+    def sortBy(self, col: str, *cols: str) -> DataFrameWriter:
+        """Sort within buckets (no-op in sparkless).
+
+        Args:
+            col: First column to sort by.
+            *cols: Additional columns to sort by.
+
+        Returns:
+            Self for method chaining.
+        """
+        return self
+
     def partitionBy(self, *cols: str) -> DataFrameWriter:
         """Partition output by given columns.
 
@@ -175,6 +200,26 @@ class DataFrameWriter:
         """
         self._options["partitionBy"] = list(cols)
         return self
+
+    def insertInto(self, tableName: str, overwrite: bool = False) -> None:
+        """Insert DataFrame data into an existing table.
+
+        Args:
+            tableName: Name of the target table (can include schema, e.g., 'schema.table').
+            overwrite: If True, overwrite existing data. Default is False (append).
+
+        Raises:
+            AnalysisException: If the table does not exist.
+
+        Example:
+            >>> df.write.insertInto("my_table")
+            >>> df.write.insertInto("my_table", overwrite=True)
+        """
+        if overwrite:
+            self.mode("overwrite")
+        else:
+            self.mode("append")
+        self.saveAsTable(tableName)
 
     def saveAsTable(self, table_name: str) -> None:
         """Save DataFrame as a table in storage.
@@ -240,6 +285,12 @@ class DataFrameWriter:
                 return  # Do nothing if table exists
 
         elif self.save_mode == "overwrite":
+            # Handle replaceWhere option: only overwrite rows matching the condition
+            replace_where = self._options.get("replaceWhere")
+            if replace_where and table_exists:
+                self._handle_replace_where(schema, table, replace_where, df_schema)
+                return
+
             # Track version and history before dropping for Delta tables
             next_version = 0
             preserved_history = []
@@ -581,6 +632,69 @@ class DataFrameWriter:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    def _handle_replace_where(
+        self,
+        schema: str,
+        table: str,
+        replace_where: str,
+        df_schema: StructType,
+    ) -> None:
+        """Handle replaceWhere option for overwrite mode.
+
+        Keeps existing rows that do NOT match the replaceWhere condition and
+        concatenates them with the new data being written.
+
+        Args:
+            schema: Schema/database name.
+            table: Table name.
+            replace_where: SQL-like condition string (e.g., "date >= '2024-01-01'").
+            df_schema: Schema of the DataFrame being written.
+        """
+        from sparkless.core.safe_evaluator import SafeExpressionEvaluator
+
+        # Load existing data from the table
+        existing_data = self.storage.get_data(schema, table)
+
+        # Keep rows that do NOT match the condition
+        kept_rows: List[Dict[str, Any]] = []
+        for row in existing_data:
+            # Build context from row for evaluator
+            context: Dict[str, Any] = {}
+            if isinstance(row, dict):
+                context = dict(row)
+            elif hasattr(row, "asDict"):  # type: ignore[unreachable]
+                context = dict(row.asDict())  # type: ignore[unreachable]
+            else:
+                from ..spark_types import row_keys, get_row_value
+
+                for k in row_keys(row):
+                    context[k] = get_row_value(row, k)
+
+            matches = SafeExpressionEvaluator.evaluate_boolean(replace_where, context)
+            if not matches:
+                kept_rows.append(context)
+
+        # Get new data
+        new_data = self.df.collect()
+        new_dict_data = [row.asDict() for row in new_data]
+
+        # Drop and recreate table, then insert merged data
+        self.storage.drop_table(schema, table)
+        self.storage.create_table(schema, table, df_schema.fields)
+
+        merged_data = kept_rows + new_dict_data
+        if merged_data:
+            self.storage.insert_data(schema, table, merged_data)
+
+        # Sync active sessions
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            self._sync_active_sessions(schema, table, df_schema.fields, merged_data)
+
+        with contextlib.suppress(Exception):
+            self._ensure_table_immediately_accessible(schema, table)
+
     def _materialize_dataframe(self) -> DataFrame:
         """Materialize the underlying DataFrame (handling lazy evaluation)."""
         from .dataframe import DataFrame

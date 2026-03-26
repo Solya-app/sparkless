@@ -59,8 +59,15 @@ from .sql import (  # noqa: E402
 from .spark_types import Row  # noqa: E402, F401
 from .window import Window, WindowSpec  # noqa: E402
 from .session.context import SparkContext, JVMContext  # noqa: E402
+from .storage_level import StorageLevel  # noqa: E402
 from . import compat  # noqa: E402
-from .delta import DeltaTable, DeltaMergeBuilder  # noqa: E402
+from .delta import (  # noqa: E402
+    DeltaTable,
+    DeltaMergeBuilder,
+    DeltaMergeMatchedActionBuilder,
+    DeltaMergeNotMatchedActionBuilder,
+    DeltaMergeNotMatchedBySourceActionBuilder,
+)
 from .spark_types import (  # noqa: E402
     DataType,
     StringType,
@@ -155,6 +162,9 @@ __all__ = [
     # -------------------------------------------------------------------------
     "DeltaTable",  # Basic Delta table wrapper
     "DeltaMergeBuilder",  # Delta MERGE builder (mock)
+    "DeltaMergeMatchedActionBuilder",  # Chained matched action builder
+    "DeltaMergeNotMatchedActionBuilder",  # Chained not-matched action builder
+    "DeltaMergeNotMatchedBySourceActionBuilder",  # Chained not-matched-by-source builder
     # -------------------------------------------------------------------------
     # Data Types (Core PySpark API)
     # -------------------------------------------------------------------------
@@ -180,6 +190,7 @@ __all__ = [
     # Storage (Core Infrastructure)
     # -------------------------------------------------------------------------
     "MemoryStorageManager",  # Storage backend
+    "StorageLevel",  # Storage level constants - like pyspark.StorageLevel
     # -------------------------------------------------------------------------
     # Exceptions (PySpark-compatible)
     # -------------------------------------------------------------------------
@@ -225,3 +236,10 @@ from . import sql  # noqa: E402
 
 # Register sql module in sys.modules
 sys.modules["sparkless.sql"] = sql
+
+# ==============================================================================
+# STORAGE LEVEL MODULE - Support "from pyspark.storagelevel import StorageLevel"
+# ==============================================================================
+_storagelevel_module = ModuleType("pyspark.storagelevel")
+_storagelevel_module.StorageLevel = StorageLevel  # type: ignore[attr-defined]
+sys.modules["pyspark.storagelevel"] = _storagelevel_module
