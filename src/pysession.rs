@@ -26,10 +26,7 @@ impl PySparkSessionBuilder {
     }
 
     fn get_or_create(self_: PyRef<'_, Self>) -> PyResult<PySparkSession> {
-        let app_name = self_
-            .app_name
-            .as_deref()
-            .unwrap_or("sparkless");
+        let app_name = self_.app_name.as_deref().unwrap_or("sparkless");
         let session = crate::init_or_get_global_session(app_name);
         Ok(PySparkSession { inner: session })
     }
@@ -51,12 +48,11 @@ impl PySparkSession {
     /// SparkSession.builder()
     #[classmethod]
     fn builder(_cls: &Bound<'_, pyo3::types::PyType>) -> PySparkSessionBuilder {
-        PySparkSessionBuilder {
-            app_name: None,
-        }
+        PySparkSessionBuilder { app_name: None }
     }
 
     /// createDataFrame(data, schema=None). Schema must be list of {"name": str, "type": str}.
+    #[pyo3(signature = (data, schema=None))]
     fn create_data_frame(
         &self,
         py: Python<'_>,
@@ -71,11 +67,14 @@ impl PySparkSession {
         let df = self
             .inner
             .create_dataframe_from_rows(data_rows, schema_vec, false)
-            .map_err(|e| PyValueError::new_err(format!("create_dataframe_from_rows failed: {e}")))?;
+            .map_err(|e| {
+                PyValueError::new_err(format!("create_dataframe_from_rows failed: {e}"))
+            })?;
         Ok(PyDataFrame::from_robin(df))
     }
 
     /// Alias for create_data_frame (PySpark: createDataFrame).
+    #[pyo3(signature = (data, schema=None))]
     fn createDataFrame(
         &self,
         py: Python<'_>,

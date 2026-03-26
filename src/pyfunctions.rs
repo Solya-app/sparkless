@@ -53,7 +53,9 @@ pub fn concat(cols: &Bound<'_, PyList>) -> PyResult<PyColumn> {
 pub fn concat_ws(separator: &str, cols: &Bound<'_, PyList>) -> PyResult<PyColumn> {
     let robin_cols: Vec<RobinColumn> = cols_from_list(cols)?;
     if robin_cols.is_empty() {
-        return Err(PyValueError::new_err("concat_ws requires at least one column"));
+        return Err(PyValueError::new_err(
+            "concat_ws requires at least one column",
+        ));
     }
     let refs: Vec<&RobinColumn> = col_refs(&robin_cols);
     Ok(PyColumn::from_robin(functions::concat_ws(separator, &refs)))
@@ -85,7 +87,9 @@ pub fn trim(col: &Bound<'_, PyAny>) -> PyResult<PyColumn> {
 #[pyo3(signature = (col, start, length=None))]
 pub fn substring(col: &Bound<'_, PyAny>, start: i64, length: Option<i64>) -> PyResult<PyColumn> {
     let c = py_any_to_select_expr(col)?;
-    Ok(PyColumn::from_robin(functions::substring(&c, start, length)))
+    Ok(PyColumn::from_robin(functions::substring(
+        &c, start, length,
+    )))
 }
 
 /// F.length(col)
@@ -98,16 +102,32 @@ pub fn length(col: &Bound<'_, PyAny>) -> PyResult<PyColumn> {
 /// F.regexp_extract(col, pattern, group_index=0)
 #[pyfunction]
 #[pyo3(signature = (col, pattern, group_index=0))]
-pub fn regexp_extract(col: &Bound<'_, PyAny>, pattern: &str, group_index: usize) -> PyResult<PyColumn> {
+pub fn regexp_extract(
+    col: &Bound<'_, PyAny>,
+    pattern: &str,
+    group_index: usize,
+) -> PyResult<PyColumn> {
     let c = py_any_to_select_expr(col)?;
-    Ok(PyColumn::from_robin(functions::regexp_extract(&c, pattern, group_index)))
+    Ok(PyColumn::from_robin(functions::regexp_extract(
+        &c,
+        pattern,
+        group_index,
+    )))
 }
 
 /// F.regexp_replace(col, pattern, replacement)
 #[pyfunction]
-pub fn regexp_replace(col: &Bound<'_, PyAny>, pattern: &str, replacement: &str) -> PyResult<PyColumn> {
+pub fn regexp_replace(
+    col: &Bound<'_, PyAny>,
+    pattern: &str,
+    replacement: &str,
+) -> PyResult<PyColumn> {
     let c = py_any_to_select_expr(col)?;
-    Ok(PyColumn::from_robin(functions::regexp_replace(&c, pattern, replacement)))
+    Ok(PyColumn::from_robin(functions::regexp_replace(
+        &c,
+        pattern,
+        replacement,
+    )))
 }
 
 /// F.split(col, delimiter, limit=None)
@@ -142,9 +162,17 @@ pub fn contains(col: &Bound<'_, PyAny>, substring: &str) -> PyResult<PyColumn> {
 /// F.like(col, pattern, escape_char=None)
 #[pyfunction]
 #[pyo3(signature = (col, pattern, escape_char=None))]
-pub fn like(col: &Bound<'_, PyAny>, pattern: &str, escape_char: Option<char>) -> PyResult<PyColumn> {
+pub fn like(
+    col: &Bound<'_, PyAny>,
+    pattern: &str,
+    escape_char: Option<char>,
+) -> PyResult<PyColumn> {
     let c = py_any_to_select_expr(col)?;
-    Ok(PyColumn::from_robin(functions::like(&c, pattern, escape_char)))
+    Ok(PyColumn::from_robin(functions::like(
+        &c,
+        pattern,
+        escape_char,
+    )))
 }
 
 /// F.format_string(format, *cols)
@@ -152,10 +180,14 @@ pub fn like(col: &Bound<'_, PyAny>, pattern: &str, escape_char: Option<char>) ->
 pub fn format_string(format: &str, cols: &Bound<'_, PyList>) -> PyResult<PyColumn> {
     let robin_cols: Vec<RobinColumn> = cols_from_list(cols)?;
     if robin_cols.is_empty() {
-        return Err(PyValueError::new_err("format_string needs at least one column"));
+        return Err(PyValueError::new_err(
+            "format_string needs at least one column",
+        ));
     }
     let refs: Vec<&RobinColumn> = col_refs(&robin_cols);
-    Ok(PyColumn::from_robin(functions::format_string(format, &refs)))
+    Ok(PyColumn::from_robin(functions::format_string(
+        format, &refs,
+    )))
 }
 
 /// F.array(*cols) - create array column from columns. Empty list = column of empty arrays.
@@ -387,7 +419,9 @@ pub fn when(condition: &Bound<'_, PyAny>) -> PyResult<PyWhenBuilder> {
 pub fn coalesce(cols: &Bound<'_, PyList>) -> PyResult<PyColumn> {
     let robin_cols: Vec<RobinColumn> = cols_from_list(cols)?;
     if robin_cols.is_empty() {
-        return Err(PyValueError::new_err("coalesce requires at least one column"));
+        return Err(PyValueError::new_err(
+            "coalesce requires at least one column",
+        ));
     }
     let refs: Vec<&RobinColumn> = col_refs(&robin_cols);
     Ok(PyColumn::from_robin(functions::coalesce(&refs)))
@@ -398,7 +432,9 @@ pub fn coalesce(cols: &Bound<'_, PyList>) -> PyResult<PyColumn> {
 pub fn greatest(cols: &Bound<'_, PyList>) -> PyResult<PyColumn> {
     let robin_cols: Vec<RobinColumn> = cols_from_list(cols)?;
     if robin_cols.is_empty() {
-        return Err(PyValueError::new_err("greatest requires at least one column"));
+        return Err(PyValueError::new_err(
+            "greatest requires at least one column",
+        ));
     }
     let refs: Vec<&RobinColumn> = col_refs(&robin_cols);
     functions::greatest(&refs)
@@ -546,7 +582,10 @@ pub fn get_item(col: &Bound<'_, PyAny>, key: &Bound<'_, PyAny>) -> PyResult<PyCo
     let c = py_any_to_column(col)?;
     if let Ok(index_0based) = key.extract::<i64>() {
         let index_1based = index_0based + 1;
-        Ok(PyColumn::from_robin(functions::element_at(&c, index_1based)))
+        Ok(PyColumn::from_robin(functions::element_at(
+            &c,
+            index_1based,
+        )))
     } else if key.extract::<String>().is_ok() {
         Err(PyValueError::new_err(
             "get_item with string key (map lookup) is not yet supported by the Robin backend",

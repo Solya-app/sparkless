@@ -5,8 +5,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyList;
 use robin_sparkless::dataframe::GroupedData as RobinGroupedData;
 use robin_sparkless::dataframe::JoinType as RobinJoinType;
-use robin_sparkless::DataFrame as RobinDataFrame;
 use robin_sparkless::functions as robin_functions;
+use robin_sparkless::DataFrame as RobinDataFrame;
 
 use crate::pycolumn::{py_any_to_column, py_any_to_select_expr, PyColumn};
 use crate::pysortorder::PySortOrder;
@@ -87,6 +87,7 @@ impl PyDataFrame {
             .map_err(|e| PyValueError::new_err(format!("limit failed: {e}")))
     }
 
+    #[pyo3(signature = (cols, ascending=None))]
     fn order_by(&self, cols: Vec<&str>, ascending: Option<bool>) -> PyResult<Self> {
         let asc = ascending.unwrap_or(true);
         let n = cols.len();
@@ -110,12 +111,14 @@ impl PyDataFrame {
     }
 
     fn group_by(&self, cols: Vec<&str>) -> PyResult<PyGroupedData> {
-        let gd = self.inner
+        let gd = self
+            .inner
             .group_by(cols)
             .map_err(|e| PyValueError::new_err(format!("group_by failed: {e}")))?;
         Ok(PyGroupedData { inner: gd })
     }
 
+    #[pyo3(signature = (other, on, how=None))]
     fn join(
         &self,
         other: PyRef<'_, PyDataFrame>,
@@ -136,7 +139,12 @@ impl PyDataFrame {
             .map_err(|e| PyValueError::new_err(format!("union failed: {e}")))
     }
 
-    fn union_by_name(&self, other: PyRef<'_, PyDataFrame>, allow_missing_columns: Option<bool>) -> PyResult<Self> {
+    #[pyo3(signature = (other, allow_missing_columns=None))]
+    fn union_by_name(
+        &self,
+        other: PyRef<'_, PyDataFrame>,
+        allow_missing_columns: Option<bool>,
+    ) -> PyResult<Self> {
         self.inner
             .union_by_name(other.as_robin(), allow_missing_columns.unwrap_or(false))
             .map(Self::from_robin)
@@ -148,8 +156,11 @@ impl PyDataFrame {
     }
 
     /// distinct(Some(col_names)) for dropDuplicates(subset=...); None = all columns.
+    #[pyo3(signature = (subset=None))]
     fn distinct_subset(&self, subset: Option<Vec<String>>) -> PyResult<Self> {
-        let opt_ref: Option<Vec<&str>> = subset.as_ref().map(|v| v.iter().map(String::as_str).collect());
+        let opt_ref: Option<Vec<&str>> = subset
+            .as_ref()
+            .map(|v| v.iter().map(String::as_str).collect());
         self.inner
             .distinct(opt_ref)
             .map(Self::from_robin)
@@ -207,6 +218,7 @@ impl PyGroupedData {
     }
 
     /// Pivot a column; returns PivotedGroupedData (call .sum(column) etc. on result).
+    #[pyo3(signature = (pivot_col, values=None))]
     fn pivot(&self, pivot_col: &str, values: Option<Vec<String>>) -> PyPivotedGroupedData {
         let pivoted = self.inner.pivot(pivot_col, values);
         PyPivotedGroupedData { inner: pivoted }
@@ -225,7 +237,8 @@ impl PyGroupedData {
     /// Average of column per group. PySpark: groupBy(...).avg("col") or .mean("col")
     fn avg(&self, column: &str) -> PyResult<PyDataFrame> {
         let _ = crate::get_or_create_session();
-        let avg_col = robin_functions::avg(&robin_functions::col(column)).alias(&format!("avg({})", column));
+        let avg_col =
+            robin_functions::avg(&robin_functions::col(column)).alias(&format!("avg({})", column));
         self.inner
             .agg_columns(vec![avg_col])
             .map(Self::from_robin_df)
@@ -235,7 +248,8 @@ impl PyGroupedData {
     /// Sum of column per group. PySpark: groupBy(...).sum("col")
     fn sum(&self, column: &str) -> PyResult<PyDataFrame> {
         let _ = crate::get_or_create_session();
-        let sum_col = robin_functions::sum(&robin_functions::col(column)).alias(&format!("sum({})", column));
+        let sum_col =
+            robin_functions::sum(&robin_functions::col(column)).alias(&format!("sum({})", column));
         self.inner
             .agg_columns(vec![sum_col])
             .map(Self::from_robin_df)
@@ -245,7 +259,8 @@ impl PyGroupedData {
     /// Min of column per group. PySpark: groupBy(...).min("col")
     fn min(&self, column: &str) -> PyResult<PyDataFrame> {
         let _ = crate::get_or_create_session();
-        let min_col = robin_functions::min(&robin_functions::col(column)).alias(&format!("min({})", column));
+        let min_col =
+            robin_functions::min(&robin_functions::col(column)).alias(&format!("min({})", column));
         self.inner
             .agg_columns(vec![min_col])
             .map(Self::from_robin_df)
@@ -255,7 +270,8 @@ impl PyGroupedData {
     /// Max of column per group. PySpark: groupBy(...).max("col")
     fn max(&self, column: &str) -> PyResult<PyDataFrame> {
         let _ = crate::get_or_create_session();
-        let max_col = robin_functions::max(&robin_functions::col(column)).alias(&format!("max({})", column));
+        let max_col =
+            robin_functions::max(&robin_functions::col(column)).alias(&format!("max({})", column));
         self.inner
             .agg_columns(vec![max_col])
             .map(Self::from_robin_df)

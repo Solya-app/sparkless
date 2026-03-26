@@ -24,7 +24,6 @@ impl PyColumn {
     pub fn as_robin(&self) -> &RobinColumn {
         &self.inner
     }
-
 }
 
 #[pymethods]
@@ -69,18 +68,8 @@ impl PyColumn {
     fn between(&self, lower: &Bound<'_, PyAny>, upper: &Bound<'_, PyAny>) -> PyResult<Self> {
         let lower_col = py_any_to_column(lower)?;
         let upper_col = py_any_to_column(upper)?;
-        let ge_expr = self
-            .inner
-            .clone()
-            .ge_pyspark(&lower_col)
-            .expr()
-            .clone();
-        let le_expr = self
-            .inner
-            .clone()
-            .le_pyspark(&upper_col)
-            .expr()
-            .clone();
+        let ge_expr = self.inner.clone().ge_pyspark(&lower_col).expr().clone();
+        let le_expr = self.inner.clone().le_pyspark(&upper_col).expr().clone();
         let combined = ge_expr.and(le_expr);
         Ok(Self::from_robin(RobinColumn::from_expr(combined, None)))
     }
@@ -117,21 +106,13 @@ impl PyColumn {
 
     fn and_(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         let other_col = py_any_to_column(other)?;
-        let combined = self
-            .inner
-            .expr()
-            .clone()
-            .and(other_col.expr().clone());
+        let combined = self.inner.expr().clone().and(other_col.expr().clone());
         Ok(Self::from_robin(RobinColumn::from_expr(combined, None)))
     }
 
     fn or_(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         let other_col = py_any_to_column(other)?;
-        let combined = self
-            .inner
-            .expr()
-            .clone()
-            .or(other_col.expr().clone());
+        let combined = self.inner.expr().clone().or(other_col.expr().clone());
         Ok(Self::from_robin(RobinColumn::from_expr(combined, None)))
     }
 
@@ -200,7 +181,8 @@ impl PyColumn {
     }
 
     fn isin_(&self, values: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let list = values.downcast::<pyo3::types::PyList>()
+        let list = values
+            .downcast::<pyo3::types::PyList>()
             .map_err(|_| PyValueError::new_err("isin requires a list of values"))?;
         if list.is_empty() {
             return Err(PyValueError::new_err("isin requires a non-empty list"));
@@ -387,5 +369,7 @@ pub fn py_any_to_column(obj: &Bound<'_, PyAny>) -> PyResult<RobinColumn> {
             }
         }
     }
-    Err(PyValueError::new_err("cannot convert to Column".to_string()))
+    Err(PyValueError::new_err(
+        "cannot convert to Column".to_string(),
+    ))
 }
