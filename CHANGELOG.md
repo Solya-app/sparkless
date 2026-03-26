@@ -1,3 +1,10 @@
+# [4.3.0](https://github.com/Solya-app/sparkless/compare/v4.2.0...v4.3.0) (2026-03-26)
+
+
+### Features
+
+* **sql:** add RESTORE TABLE SQL command support ([#5](https://github.com/Solya-app/sparkless/issues/5)) ([286d86b](https://github.com/Solya-app/sparkless/commit/286d86b2d325fce25cea5060e174c0d02e3c10b7))
+
 # [4.2.0](https://github.com/Solya-app/sparkless/compare/v4.1.1...v4.2.0) (2026-03-26)
 
 
