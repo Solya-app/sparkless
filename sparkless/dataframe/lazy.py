@@ -1086,6 +1086,63 @@ class LazyEvaluationEngine:
         )
 
     @staticmethod
+    def _collect_window_functions(expr: Any) -> list:
+        """Recursively collect all WindowFunction objects from an expression.
+
+        Args:
+            expr: Expression to search (Column, ColumnOperation, WindowFunction, etc.)
+
+        Returns:
+            List of WindowFunction objects found in the expression tree.
+        """
+        results: list = []
+        if hasattr(expr, "__class__") and expr.__class__.__name__ == "WindowFunction":
+            results.append(expr)
+            return results
+        if hasattr(expr, "column"):
+            results.extend(LazyEvaluationEngine._collect_window_functions(expr.column))
+        if hasattr(expr, "value") and expr.value is not None:
+            results.extend(LazyEvaluationEngine._collect_window_functions(expr.value))
+        if hasattr(expr, "function"):
+            results.extend(
+                LazyEvaluationEngine._collect_window_functions(expr.function)
+            )
+        return results
+
+    @staticmethod
+    def _resolve_window_in_expr(expr: Any, wf_row_values: dict) -> Any:
+        """Replace WindowFunction objects in an expression tree with Literal values.
+
+        Args:
+            expr: The expression tree to process.
+            wf_row_values: Mapping from WindowFunction id() to the value for the current row.
+
+        Returns:
+            A new expression with WindowFunctions replaced by Literals.
+        """
+        from ..functions.core.literals import Literal
+        from ..functions.core.column import ColumnOperation
+
+        if id(expr) in wf_row_values:
+            return Literal(wf_row_values[id(expr)])
+        if hasattr(expr, "__class__") and expr.__class__.__name__ == "WindowFunction":
+            return Literal(None)
+        if isinstance(expr, ColumnOperation):
+            new_col = LazyEvaluationEngine._resolve_window_in_expr(
+                expr.column, wf_row_values
+            )
+            new_val = expr.value
+            if expr.value is not None:
+                new_val = LazyEvaluationEngine._resolve_window_in_expr(
+                    expr.value, wf_row_values
+                )
+            resolved = ColumnOperation(
+                new_col, expr.operation, new_val, name=getattr(expr, "name", None)
+            )
+            return resolved
+        return expr
+
+    @staticmethod
     def _has_expr_expression(expr: Any) -> bool:
         """Check if expression contains F.expr() or complex operations that need manual materialization.
 
@@ -1312,6 +1369,11 @@ class LazyEvaluationEngine:
         operations_applied_so_far = []
         schema_at_operation = base_schema
 
+        # Update current DataFrame schema to match the true base schema inferred from data.
+        # When _queue_op uses self.schema (projected), df._schema may be too narrow
+        # (e.g., after select reduces columns). The base_schema from data is authoritative.
+        current._schema = base_schema
+
         for op_name, op_val in df._operations_queue:
             try:
                 if op_name == "filter":
@@ -1441,6 +1503,49 @@ class LazyEvaluationEngine:
                                     new_row = row.copy()
                                     new_row[col_name] = None
                                     new_data.append(new_row)
+                        elif (
+                            isinstance(col, ColumnOperation)
+                            and LazyEvaluationEngine._has_window_function(col)
+                        ):
+                            # ColumnOperation with arithmetic on WindowFunction
+                            wf_list = LazyEvaluationEngine._collect_window_functions(col)
+                            wf_results_map_wc: Dict[int, Sequence[Any]] = {}
+                            for wf in wf_list:
+                                try:
+                                    wf_raw = wf.evaluate(current.data)
+                                    if wf_raw is None:
+                                        wf_results_map_wc[id(wf)] = [None] * len(current.data)
+                                    elif isinstance(wf_raw, Sequence):
+                                        wf_results_map_wc[id(wf)] = wf_raw
+                                    else:
+                                        wf_results_map_wc[id(wf)] = cast("Sequence[Any]", wf_raw)
+                                except _EVALUATION_FAILURE_EXCEPTIONS:
+                                    wf_results_map_wc[id(wf)] = [None] * len(current.data)
+
+                            new_data = []
+                            for row_index, row in enumerate(current.data):
+                                new_row = row.copy()
+                                wf_row_values = {}
+                                for wf in wf_list:
+                                    seq = wf_results_map_wc.get(id(wf))
+                                    if seq is not None and row_index < len(seq):
+                                        wf_row_values[id(wf)] = seq[row_index]
+                                    else:
+                                        wf_row_values[id(wf)] = None
+                                resolved_expr = LazyEvaluationEngine._resolve_window_in_expr(
+                                    col, wf_row_values
+                                )
+                                try:
+                                    from ..core.condition_evaluator import (
+                                        ConditionEvaluator as WCCondEval,
+                                    )
+                                    result = WCCondEval.evaluate_expression(
+                                        row, resolved_expr
+                                    )
+                                    new_row[col_name] = result
+                                except _EVALUATION_FAILURE_EXCEPTIONS:
+                                    new_row[col_name] = None
+                                new_data.append(new_row)
                         else:
                             # Regular expression - use ExpressionEvaluator
                             evaluator = ExpressionEvaluator(current)
@@ -1506,7 +1611,7 @@ class LazyEvaluationEngine:
                     from ..spark_types import StructType, StructField
 
                     new_fields = []
-                    for col in op_val:
+                    for _col_idx, col in enumerate(op_val):
                         if isinstance(col, str):
                             # String column name - find in current schema
                             found = False
@@ -1525,12 +1630,23 @@ class LazyEvaluationEngine:
                         elif isinstance(col, Column) and (
                             not hasattr(col, "operation") or col.operation is None
                         ):
-                            # Simple column reference
+                            # Simple column reference (may be aliased)
                             field = None
                             if hasattr(current.schema, "_field_map"):
                                 field = current.schema._field_map.get(col.name)
                             if field is not None:
                                 new_fields.append(field)
+                            elif hasattr(col, "_original_column") and col._original_column is not None:
+                                # Aliased column: look up original column type, use alias name
+                                orig_name = col._original_column.name
+                                orig_field = None
+                                if hasattr(current.schema, "_field_map"):
+                                    orig_field = current.schema._field_map.get(orig_name)
+                                if orig_field is not None:
+                                    new_fields.append(StructField(col.name, orig_field.dataType, orig_field.nullable))
+                                else:
+                                    from ..spark_types import StringType
+                                    new_fields.append(StructField(col.name, StringType(), True))
                         elif isinstance(col, ColumnOperation):
                             # Check if this is a ColumnOperation wrapping a WindowFunction (e.g., WindowFunction.cast())
                             from ..functions.window_execution import WindowFunction
@@ -1671,8 +1787,56 @@ class LazyEvaluationEngine:
                                     # If window function evaluation fails, treat as regular ColumnOperation
                                     pass  # Fall through to regular ColumnOperation handling
 
+                            # Check if ColumnOperation contains WindowFunction in arithmetic
+                            # (e.g., percent_rank().over(w) * 100, 12 / row_number().over(w))
+                            if (
+                                not is_window_function_cast
+                                and LazyEvaluationEngine._has_window_function(col)
+                            ):
+                                col_name = getattr(col, "_alias_name", None) or getattr(col, "name", "result")
+                                wf_list = LazyEvaluationEngine._collect_window_functions(col)
+                                wf_results_map: Dict[int, Sequence[Any]] = {}
+                                for wf in wf_list:
+                                    try:
+                                        wf_raw = wf.evaluate(current.data)
+                                        if wf_raw is None:
+                                            wf_results_map[id(wf)] = [None] * len(current.data)
+                                        elif isinstance(wf_raw, Sequence):
+                                            wf_results_map[id(wf)] = wf_raw
+                                        else:
+                                            wf_results_map[id(wf)] = cast("Sequence[Any]", wf_raw)
+                                    except _EVALUATION_FAILURE_EXCEPTIONS:
+                                        wf_results_map[id(wf)] = [None] * len(current.data)
+
+                                if not hasattr(current, "_window_arithmetic_ops"):
+                                    setattr(current, "_window_arithmetic_ops", {})
+                                wa_ops = getattr(current, "_window_arithmetic_ops", {})
+                                wa_ops[_col_idx] = (col, wf_list, wf_results_map)
+                                setattr(current, "_window_arithmetic_ops", wa_ops)
+
+                                col_type = SchemaInferenceEngine._infer_type(0.0)
+                                new_fields.append(StructField(col_name, col_type, True))
+                                continue
+
+                            # Handle json_tuple: expand into multiple columns (c0, c1, ...)
+                            if col.operation == "json_tuple":
+                                json_tuple_fields = col.value if col.value else ()
+                                num_fields = len(json_tuple_fields)
+                                from ..spark_types import StringType as JTStringType
+                                for jt_idx in range(num_fields):
+                                    new_fields.append(
+                                        StructField(f"c{jt_idx}", JTStringType(), True)
+                                    )
+                                # Track this as a json_tuple expansion for the data phase
+                                if not hasattr(current, "_json_tuple_expansions"):
+                                    setattr(current, "_json_tuple_expansions", {})
+                                jt_expansions = getattr(current, "_json_tuple_expansions", {})
+                                jt_expansions[_col_idx] = (col, num_fields)
+                                setattr(current, "_json_tuple_expansions", jt_expansions)
+                                continue
+
                             # Column operation - need to evaluate
-                            col_name = getattr(col, "name", "result")
+                            col_name = getattr(col, "_alias_name", None) or getattr(col, "name", "result")
 
                             # Handle transform operations specially
                             if col.operation == "transform":
@@ -1775,6 +1939,27 @@ class LazyEvaluationEngine:
 
                     new_schema = StructType(new_fields)
 
+                    # Build field offset map: for each op_val index, what is its starting index in new_fields?
+                    # This accounts for json_tuple expanding into multiple fields.
+                    _jt_expansions = getattr(current, "_json_tuple_expansions", {})
+                    _field_offset_map: Dict[int, int] = {}
+                    _field_cursor = 0
+                    for _oi in range(len(op_val)):
+                        _field_offset_map[_oi] = _field_cursor
+                        if _oi in _jt_expansions:
+                            _field_cursor += _jt_expansions[_oi][1]  # num_fields
+                        else:
+                            _field_cursor += 1
+
+                    # Detect explode columns for row expansion
+                    explode_col_indices = []
+                    for _ei, _ecol in enumerate(op_val):
+                        if (
+                            isinstance(_ecol, ColumnOperation)
+                            and getattr(_ecol, "operation", None) == "explode"
+                        ):
+                            explode_col_indices.append(_ei)
+
                     # Evaluate the select operation on each row
                     new_data = []
                     for row_index, row in enumerate(current.data):
@@ -1809,18 +1994,22 @@ class LazyEvaluationEngine:
                             elif isinstance(col, Column) and (
                                 not hasattr(col, "operation") or col.operation is None
                             ):
-                                # Simple column reference
+                                # Simple column reference (may be aliased)
                                 field_name = (
                                     new_fields[i].name
                                     if i < len(new_fields)
                                     else col.name
                                 )
-                                if col.name in row:
-                                    new_row[field_name] = row[col.name]
+                                # For aliased columns, look up using the original column name
+                                lookup_name = col.name
+                                if hasattr(col, "_original_column") and col._original_column is not None:
+                                    lookup_name = col._original_column.name
+                                if lookup_name in row:
+                                    new_row[field_name] = row[lookup_name]
                                 else:
-                                    # Column name not in row - try to get it
+                                    # Column name not in row - try case-insensitive lookup
                                     new_row[field_name] = get_row_value(
-                                        row, col.name, None
+                                        row, lookup_name, None
                                     )
                             elif isinstance(col, ColumnOperation):
                                 # Check if this is a ColumnOperation wrapping a WindowFunction (e.g., WindowFunction.cast())
@@ -1855,6 +2044,66 @@ class LazyEvaluationEngine:
                                     else:
                                         new_row[field_name] = None
                                     continue  # Skip to next column
+
+                                # Check if this is a pre-computed window arithmetic operation
+                                wa_ops = getattr(current, "_window_arithmetic_ops", {})
+                                if i in wa_ops:
+                                    orig_col, wf_list, wf_results_map = wa_ops[i]
+                                    field_name = (
+                                        new_fields[i].name
+                                        if i < len(new_fields)
+                                        else getattr(col, "name", "result")
+                                    )
+                                    wf_row_values = {}
+                                    for wf in wf_list:
+                                        seq = wf_results_map.get(id(wf))
+                                        if seq is not None and row_index < len(seq):
+                                            wf_row_values[id(wf)] = seq[row_index]
+                                        else:
+                                            wf_row_values[id(wf)] = None
+                                    resolved_expr = LazyEvaluationEngine._resolve_window_in_expr(
+                                        orig_col, wf_row_values
+                                    )
+                                    try:
+                                        from ..core.condition_evaluator import (
+                                            ConditionEvaluator as WACEval,
+                                        )
+                                        result = WACEval.evaluate_expression(
+                                            row, resolved_expr
+                                        )
+                                        new_row[field_name] = result
+                                    except _EVALUATION_FAILURE_EXCEPTIONS:
+                                        new_row[field_name] = None
+                                    continue
+
+                                # Handle json_tuple: expand into multiple columns
+                                if col.operation == "json_tuple" and i in _jt_expansions:
+                                    jt_col_op, jt_num = _jt_expansions[i]
+                                    try:
+                                        from ..core.condition_evaluator import (
+                                            ConditionEvaluator as JTEval,
+                                        )
+                                        jt_result = JTEval.evaluate_expression(row, jt_col_op)
+                                        if isinstance(jt_result, (list, tuple)):
+                                            for jt_k in range(jt_num):
+                                                fi = _field_offset_map[i] + jt_k
+                                                if fi < len(new_fields):
+                                                    new_row[new_fields[fi].name] = (
+                                                        str(jt_result[jt_k])
+                                                        if jt_k < len(jt_result) and jt_result[jt_k] is not None
+                                                        else None
+                                                    )
+                                        else:
+                                            for jt_k in range(jt_num):
+                                                fi = _field_offset_map[i] + jt_k
+                                                if fi < len(new_fields):
+                                                    new_row[new_fields[fi].name] = None
+                                    except _EVALUATION_FAILURE_EXCEPTIONS:
+                                        for jt_k in range(jt_num):
+                                            fi = _field_offset_map[i] + jt_k
+                                            if fi < len(new_fields):
+                                                new_row[new_fields[fi].name] = None
+                                    continue
 
                                 # Column operation - evaluate using condition evaluator
                                 if col.operation == "transform":
@@ -1898,6 +2147,11 @@ class LazyEvaluationEngine:
                                         ) and not hasattr(col.column, "operation"):
                                             # Literal value (e.g., F.lit(123).cast("string"))
                                             source_value = col.column.value
+                                        elif hasattr(col, "column") and hasattr(
+                                            col.column, "evaluate"
+                                        ) and hasattr(col.column, "conditions"):
+                                            # CaseWhen expression (e.g., F.when(...).otherwise(...).cast())
+                                            source_value = col.column.evaluate(row)
                                         elif hasattr(col, "column") and hasattr(
                                             col.column, "name"
                                         ):
@@ -2087,7 +2341,29 @@ class LazyEvaluationEngine:
                                 # Fallback
                                 if i < len(new_fields):
                                     new_row[new_fields[i].name] = None
-                        new_data.append(new_row)
+                        # Handle explode: expand rows for exploded array columns
+                        if explode_col_indices:
+                            explode_arrays = {}
+                            for ei in explode_col_indices:
+                                field_name = new_fields[ei].name if ei < len(new_fields) else f"col_{ei}"
+                                arr_val = new_row.get(field_name)
+                                if isinstance(arr_val, (list, tuple)):
+                                    explode_arrays[field_name] = arr_val
+                                else:
+                                    explode_arrays[field_name] = [arr_val]
+
+                            if explode_arrays:
+                                first_arr = next(iter(explode_arrays.values()))
+                                num_rows = len(first_arr) if first_arr else 0
+                                for row_i in range(num_rows):
+                                    expanded_row = new_row.copy()
+                                    for field_name, arr_val in explode_arrays.items():
+                                        expanded_row[field_name] = arr_val[row_i] if row_i < len(arr_val) else None
+                                    new_data.append(expanded_row)
+                            else:
+                                new_data.append(new_row)
+                        else:
+                            new_data.append(new_row)
 
                     # Update current with new data and schema, preserving cached state
                     current = DataFrame(new_data, new_schema, current.storage)
