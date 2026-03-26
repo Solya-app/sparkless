@@ -1935,6 +1935,7 @@ class ExpressionEvaluator:
             "arrays_zip": self._func_arrays_zip,
             "flatten": self._func_flatten,
             "sequence": self._func_sequence,
+            "size": self._func_size,
             # Map functions
             "create_map": self._func_create_map,
             "map_filter": self._func_map_filter,
@@ -3047,6 +3048,16 @@ class ExpressionEvaluator:
         # This should not be called directly - handled in _evaluate_function_call
         # But kept for registry completeness
         return None
+
+    def _func_size(self, value: Any, operation: ColumnOperation) -> Any:
+        """Return the size (length) of an array or map."""
+        if value is None:
+            return -1  # PySpark returns -1 for null arrays/maps
+        if isinstance(value, (list, tuple)):
+            return len(value)
+        if isinstance(value, dict):
+            return len(value)
+        return -1
 
     def _func_flatten(self, value: Any, operation: ColumnOperation) -> Any:
         """Flatten nested arrays."""

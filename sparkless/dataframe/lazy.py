@@ -1086,6 +1086,63 @@ class LazyEvaluationEngine:
         )
 
     @staticmethod
+    def _collect_window_functions(expr: Any) -> list:
+        """Recursively collect all WindowFunction objects from an expression.
+
+        Args:
+            expr: Expression to search (Column, ColumnOperation, WindowFunction, etc.)
+
+        Returns:
+            List of WindowFunction objects found in the expression tree.
+        """
+        results: list = []
+        if hasattr(expr, "__class__") and expr.__class__.__name__ == "WindowFunction":
+            results.append(expr)
+            return results
+        if hasattr(expr, "column"):
+            results.extend(LazyEvaluationEngine._collect_window_functions(expr.column))
+        if hasattr(expr, "value") and expr.value is not None:
+            results.extend(LazyEvaluationEngine._collect_window_functions(expr.value))
+        if hasattr(expr, "function"):
+            results.extend(
+                LazyEvaluationEngine._collect_window_functions(expr.function)
+            )
+        return results
+
+    @staticmethod
+    def _resolve_window_in_expr(expr: Any, wf_row_values: dict) -> Any:
+        """Replace WindowFunction objects in an expression tree with Literal values.
+
+        Args:
+            expr: The expression tree to process.
+            wf_row_values: Mapping from WindowFunction id() to the value for the current row.
+
+        Returns:
+            A new expression with WindowFunctions replaced by Literals.
+        """
+        from ..functions.core.literals import Literal
+
+        if id(expr) in wf_row_values:
+            return Literal(wf_row_values[id(expr)])
+        if hasattr(expr, "__class__") and expr.__class__.__name__ == "WindowFunction":
+            # Should have been in wf_row_values, but fall back to None
+            return Literal(None)
+        if isinstance(expr, ColumnOperation):
+            new_col = LazyEvaluationEngine._resolve_window_in_expr(
+                expr.column, wf_row_values
+            )
+            new_val = expr.value
+            if expr.value is not None:
+                new_val = LazyEvaluationEngine._resolve_window_in_expr(
+                    expr.value, wf_row_values
+                )
+            resolved = ColumnOperation(
+                new_col, expr.operation, new_val, name=getattr(expr, "name", None)
+            )
+            return resolved
+        return expr
+
+    @staticmethod
     def _has_expr_expression(expr: Any) -> bool:
         """Check if expression contains F.expr() or complex operations that need manual materialization.
 
@@ -1443,15 +1500,18 @@ class LazyEvaluationEngine:
                                     new_data.append(new_row)
                         else:
                             # Regular expression - use ExpressionEvaluator
-                            evaluator = ExpressionEvaluator(current)
+                            # Pass full_data when expression contains window functions
+                            _wc_full_data = current.data if LazyEvaluationEngine._has_window_function(col) else None
+                            evaluator = ExpressionEvaluator(current, full_data=_wc_full_data)
 
                             # Evaluate the column expression for each row
                             new_data = []
-                            for row in current.data:
+                            for _wc_row_idx, row in enumerate(current.data):
                                 new_row = row.copy()
                                 try:
+                                    evaluator._current_row_index = _wc_row_idx
                                     # Evaluate the column expression
-                                    col_value = evaluator.evaluate_expression(row, col)
+                                    col_value = evaluator.evaluate_expression(row, col, row_index=_wc_row_idx)
                                     new_row[col_name] = col_value
                                 except _EVALUATION_FAILURE_EXCEPTIONS:
                                     # If evaluation fails, set to None
@@ -1708,6 +1768,14 @@ class LazyEvaluationEngine:
                                     []
                                 )  # Array type
                                 new_fields.append(StructField(col_name, col_type, True))
+                            elif LazyEvaluationEngine._has_window_function(col) and col.operation in ("+", "-", "*", "/", "%"):
+                                # Arithmetic with window functions: infer type from operation
+                                from ..spark_types import DoubleType as _SelDoubleType, LongType as _SelLongType
+                                if col.operation == "/":
+                                    col_type = _SelDoubleType()
+                                else:
+                                    col_type = _SelLongType()
+                                new_fields.append(StructField(col_name, col_type, True))
                             else:
                                 # For other operations, use the standard approach
                                 col_type = SchemaInferenceEngine._infer_type(col)
@@ -1774,6 +1842,15 @@ class LazyEvaluationEngine:
                             new_fields.append(StructField(col_name, col_type, True))
 
                     new_schema = StructType(new_fields)
+
+                    # Check if any column uses explode - requires special row expansion
+                    explode_col_indices = []
+                    for _ei, _ecol in enumerate(op_val):
+                        if (
+                            isinstance(_ecol, ColumnOperation)
+                            and getattr(_ecol, "operation", None) == "explode"
+                        ):
+                            explode_col_indices.append(_ei)
 
                     # Evaluate the select operation on each row
                     new_data = []
@@ -1892,6 +1969,17 @@ class LazyEvaluationEngine:
                                                 CastCondEval.evaluate_expression(
                                                     row, col.column
                                                 )
+                                            )
+                                        elif hasattr(col, "column") and hasattr(
+                                            col.column, "conditions"
+                                        ):
+                                            # CaseWhen expression (e.g., F.when(...).otherwise(...).cast())
+                                            from ..dataframe.evaluation.expression_evaluator import (
+                                                ExpressionEvaluator as CastExprEval,
+                                            )
+                                            cast_evaluator = CastExprEval(current)
+                                            source_value = cast_evaluator.evaluate_expression(
+                                                row, col.column
                                             )
                                         elif hasattr(col, "column") and hasattr(
                                             col.column, "value"
@@ -2019,23 +2107,43 @@ class LazyEvaluationEngine:
                                             new_row[new_fields[i].name] = None
                                 else:
                                     # Other column operations (arithmetic, functions, etc.)
-                                    from ..core.condition_evaluator import (
-                                        ConditionEvaluator,
+                                    # Check if expression contains a WindowFunction;
+                                    # if so, use ExpressionEvaluator which can resolve them.
+                                    from ..dataframe.evaluation.expression_evaluator import (
+                                        ExpressionEvaluator as SelectExprEval,
                                     )
-
-                                    try:
-                                        eval_row = row.copy()
-                                        if current._is_cached:
-                                            eval_row["__dataframe_is_cached__"] = True
-
-                                        result = ConditionEvaluator.evaluate_expression(
-                                            eval_row, col
+                                    if LazyEvaluationEngine._has_window_function(col):
+                                        try:
+                                            evaluator = SelectExprEval(
+                                                current, full_data=current.data
+                                            )
+                                            evaluator._current_row_index = row_index
+                                            result = evaluator.evaluate_expression(
+                                                row, col, row_index=row_index
+                                            )
+                                            if i < len(new_fields):
+                                                new_row[new_fields[i].name] = result
+                                        except _EVALUATION_FAILURE_EXCEPTIONS:
+                                            if i < len(new_fields):
+                                                new_row[new_fields[i].name] = None
+                                    else:
+                                        from ..core.condition_evaluator import (
+                                            ConditionEvaluator,
                                         )
-                                        if i < len(new_fields):
-                                            new_row[new_fields[i].name] = result
-                                    except _EVALUATION_FAILURE_EXCEPTIONS:
-                                        if i < len(new_fields):
-                                            new_row[new_fields[i].name] = None
+
+                                        try:
+                                            eval_row = row.copy()
+                                            if current._is_cached:
+                                                eval_row["__dataframe_is_cached__"] = True
+
+                                            result = ConditionEvaluator.evaluate_expression(
+                                                eval_row, col
+                                            )
+                                            if i < len(new_fields):
+                                                new_row[new_fields[i].name] = result
+                                        except _EVALUATION_FAILURE_EXCEPTIONS:
+                                            if i < len(new_fields):
+                                                new_row[new_fields[i].name] = None
                             elif hasattr(col, "evaluate") and hasattr(
                                 col, "conditions"
                             ):
@@ -2087,7 +2195,29 @@ class LazyEvaluationEngine:
                                 # Fallback
                                 if i < len(new_fields):
                                     new_row[new_fields[i].name] = None
-                        new_data.append(new_row)
+                        # Handle explode: expand rows for exploded array columns
+                        if explode_col_indices:
+                            explode_arrays = {}
+                            for ei in explode_col_indices:
+                                field_name = new_fields[ei].name if ei < len(new_fields) else f"col_{ei}"
+                                arr_val = new_row.get(field_name)
+                                if isinstance(arr_val, (list, tuple)):
+                                    explode_arrays[field_name] = arr_val
+                                else:
+                                    explode_arrays[field_name] = [arr_val]
+
+                            if explode_arrays:
+                                first_arr = next(iter(explode_arrays.values()))
+                                num_rows = len(first_arr) if first_arr else 0
+                                for row_i in range(num_rows):
+                                    expanded_row = new_row.copy()
+                                    for field_name, arr_val in explode_arrays.items():
+                                        expanded_row[field_name] = arr_val[row_i] if row_i < len(arr_val) else None
+                                    new_data.append(expanded_row)
+                            else:
+                                new_data.append(new_row)
+                        else:
+                            new_data.append(new_row)
 
                     # Update current with new data and schema, preserving cached state
                     current = DataFrame(new_data, new_schema, current.storage)

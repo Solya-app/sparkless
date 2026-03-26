@@ -959,6 +959,19 @@ class ConditionEvaluator:
                     return None
             return None
 
+        elif operation_type == "split":
+            if col_value is None:
+                return None
+            # operation.value is (delimiter, limit)
+            if isinstance(operation.value, tuple) and len(operation.value) >= 1:
+                delimiter = operation.value[0]
+                limit = operation.value[1] if len(operation.value) > 1 else None
+                if limit and limit > 0:
+                    return str(col_value).split(delimiter, limit)
+                else:
+                    return str(col_value).split(delimiter)
+            return str(col_value).split()
+
         else:
             # For other functions, delegate to the existing function evaluation
             # operation_type is guaranteed to be a string in ColumnOperation
@@ -1217,6 +1230,11 @@ class ConditionEvaluator:
             return left_result or right_result
         elif operation_type in ["not", "!"]:
             return not ConditionEvaluator.evaluate_condition(row, operation.column)
+
+        # UDF operations - evaluate the UDF and return its boolean result
+        if operation_type == "udf":
+            result = ConditionEvaluator._evaluate_function_operation_value(row, operation)
+            return bool(result) if result is not None else False
 
         return False
 
@@ -1790,7 +1808,38 @@ class ConditionEvaluator:
         Returns:
             True if value is in list.
         """
-        return col_value in values if col_value is not None else False
+        if col_value is None:
+            return False
+        # Direct match first
+        if col_value in values:
+            return True
+        # Type coercion: PySpark compares with type casting (e.g. string "1" matches int 1)
+        for v in values:
+            if v is None:
+                continue
+            # String col_value vs numeric list value
+            if isinstance(col_value, str) and isinstance(v, (int, float)):
+                try:
+                    if isinstance(v, int):
+                        if int(float(col_value)) == v:
+                            return True
+                    else:
+                        if float(col_value) == v:
+                            return True
+                except (ValueError, TypeError):
+                    continue
+            # Numeric col_value vs string list value
+            elif isinstance(col_value, (int, float)) and isinstance(v, str):
+                try:
+                    if isinstance(col_value, int):
+                        if col_value == int(float(v)):
+                            return True
+                    else:
+                        if col_value == float(v):
+                            return True
+                except (ValueError, TypeError):
+                    continue
+        return False
 
     @staticmethod
     def _evaluate_between_operation(col_value: Any, bounds: Tuple[Any, Any]) -> bool:
