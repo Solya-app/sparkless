@@ -1467,11 +1467,16 @@ class ConditionEvaluator:
         # Comparison operations
         if operation_type in ["==", "!=", ">", ">=", "<", "<="]:
             op_str: str = cast("str", operation_type)
+            # Resolve left side: if col_value is a CaseWhen, evaluate it
+            if hasattr(col_value, "evaluate") and hasattr(col_value, "conditions"):
+                col_value = col_value.evaluate(row)
             # Resolve right side: if it's a Column/ColumnOperation, evaluate it;
             # if it's a literal value (str, int, float, etc.), use directly.
             right_val = operation.value
             if isinstance(right_val, (ColumnOperation, Column)):
                 right_val = ConditionEvaluator._get_column_value(row, right_val)
+            elif hasattr(right_val, "evaluate") and hasattr(right_val, "conditions"):
+                right_val = right_val.evaluate(row)
             return ConditionEvaluator._evaluate_comparison(col_value, op_str, right_val)
 
         # String operations
@@ -1493,6 +1498,12 @@ class ConditionEvaluator:
             if col_value is None:
                 return None
             return str(operation.value) in str(col_value)
+        elif operation_type == "rlike":
+            if col_value is None:
+                return False
+            import re
+
+            return bool(re.search(str(operation.value), str(col_value)))
         elif operation_type == "isin":
             if operation.value is None:
                 return False
