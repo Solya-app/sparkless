@@ -2147,7 +2147,6 @@ class SQLExecutor:
 
         return cast("IDataFrame", DataFrame([], StructType([])))
 
-<<<<<<< HEAD
     def _execute_alter(self, ast: SQLAST) -> IDataFrame:
         """Execute ALTER TABLE query.
 
@@ -2164,19 +2163,11 @@ class SQLExecutor:
         For sparkless, most ALTER operations are no-ops but we validate
         that the table exists. Schema modifications are not persisted
         since sparkless is designed for testing purposes.
-=======
-    def _execute_vacuum(self, ast: SQLAST) -> IDataFrame:
-        """Execute VACUUM query for Delta tables.
-
-        Syntax:
-            VACUUM table_name [RETAIN n HOURS] [DRY RUN]
->>>>>>> ba13ca7 (feat(sql): add VACUUM SQL command support)
 
         Args:
             ast: Parsed SQL AST.
 
         Returns:
-<<<<<<< HEAD
             Empty DataFrame indicating success.
 
         Raises:
@@ -2190,14 +2181,45 @@ class SQLExecutor:
         schema_name = components.get("schema_name")
 
         # Access storage through catalog
-=======
+        storage = getattr(self.session, "_storage", None)
+        if storage is None:
+            storage = self.session.catalog.get_storage_backend()
+
+        if schema_name is None:
+            schema_name = storage.get_current_schema()
+
+        # Build qualified table name for error messages
+        qualified_name = f"{schema_name}.{table_name}" if schema_name else table_name
+
+        # Validate table exists
+        if table_name and not storage.table_exists(schema_name, table_name):
+            raise AnalysisException(f"Table {qualified_name} does not exist")
+
+        # For sparkless, ALTER operations are mostly no-ops
+        # We validate the table exists but don't actually modify schema
+        # since sparkless is designed for testing and doesn't need
+        # persistent schema changes
+
+        # Return empty DataFrame to indicate success
+        return cast("IDataFrame", DataFrame([], StructType([])))
+
+    def _execute_vacuum(self, ast: SQLAST) -> IDataFrame:
+        """Execute VACUUM query for Delta tables.
+
+        Syntax:
+            VACUUM table_name [RETAIN n HOURS] [DRY RUN]
+
+        Args:
+            ast: Parsed SQL AST.
+
+        Returns:
             DataFrame with deleted files (for DRY RUN) or empty (for actual vacuum).
 
         Raises:
             AnalysisException: If table does not exist or is not a Delta table.
         """
         from ...errors import AnalysisException
-        from ...spark_types import StructType, StructField, StringType
+        from ...spark_types import StructField, StringType, StructType
 
         # Get original query string for parsing
         original_query = ast.components.get("original_query", "")
@@ -2220,39 +2242,10 @@ class SQLExecutor:
             schema_name, table_only = "default", table_name
 
         # Get table metadata
->>>>>>> ba13ca7 (feat(sql): add VACUUM SQL command support)
         storage = getattr(self.session, "_storage", None)
         if storage is None:
             storage = self.session.catalog.get_storage_backend()
 
-<<<<<<< HEAD
-        if schema_name is None:
-            schema_name = storage.get_current_schema()
-
-        # Build qualified table name for error messages
-        qualified_name = f"{schema_name}.{table_name}" if schema_name else table_name
-
-        # Validate table exists
-        if table_name and not storage.table_exists(schema_name, table_name):
-            raise AnalysisException(f"Table {qualified_name} does not exist")
-
-        # For sparkless, ALTER operations are mostly no-ops
-        # We validate the table exists but don't actually modify schema
-        # since sparkless is designed for testing and doesn't need
-        # persistent schema changes
-
-        # Log the operation for debugging (in real usage)
-        # In a full implementation, we might:
-        # - CLUSTER_BY: Store clustering info in table metadata
-        # - ADD_COLUMN: Add column to table schema
-        # - DROP_COLUMN: Remove column from table schema
-        # - ALTER_COLUMN_TYPE: Modify column type
-        # - SET_NOT_NULL/DROP_NOT_NULL: Update nullability
-        # - SET_TBLPROPERTIES: Store table properties
-
-        # Return empty DataFrame to indicate success
-        return cast("IDataFrame", DataFrame([], StructType([])))
-=======
         if not storage.table_exists(schema_name, table_only):
             raise AnalysisException(f"Table {table_name} does not exist")
 
@@ -2287,7 +2280,6 @@ class SQLExecutor:
         else:
             # Return empty DataFrame indicating success
             return cast("IDataFrame", DataFrame([], StructType([])))
->>>>>>> ba13ca7 (feat(sql): add VACUUM SQL command support)
 
     def _execute_show(self, ast: SQLAST) -> IDataFrame:
         """Execute SHOW query.
