@@ -1,3 +1,10 @@
+## [4.3.1](https://github.com/Solya-app/sparkless/compare/v4.3.0...v4.3.1) (2026-03-26)
+
+
+### Bug Fixes
+
+* resolve CaseWhen comparison and rlike filter bugs (v5.1.0) ([96c255a](https://github.com/Solya-app/sparkless/commit/96c255aea0853dd17c30aea5a8a24f20344c9a02))
+
 # [4.3.0](https://github.com/Solya-app/sparkless/compare/v4.2.0...v4.3.0) (2026-03-26)
 
 
