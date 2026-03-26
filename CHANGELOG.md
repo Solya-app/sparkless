@@ -1,3 +1,11 @@
+# [3.28.0](https://github.com/Solya-app/sparkless/compare/v3.27.0...v3.28.0) (2026-03-26)
+
+
+### Features
+
+* add CTE (WITH clause) support to SQL executor ([#10](https://github.com/Solya-app/sparkless/issues/10)) ([774ff31](https://github.com/Solya-app/sparkless/commit/774ff318cf2b4f6f769dc15b21cea2330703be05))
+* **catalog:** add dropTempView and listLocalTempViews support ([#9](https://github.com/Solya-app/sparkless/issues/9)) ([04ced3c](https://github.com/Solya-app/sparkless/commit/04ced3c2e58b215c9a6fad0cc937670ea1b59e5e))
+
 # [3.27.0](https://github.com/Solya-app/sparkless/compare/v3.26.1...v3.27.0) (2026-03-26)
 
 
