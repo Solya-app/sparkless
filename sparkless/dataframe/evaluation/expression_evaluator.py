@@ -304,7 +304,9 @@ class ExpressionEvaluator:
                     val = self.evaluate_expression(row, col_ref, row_index=row_index)
                     args.append(val)
             else:
-                args.append(self.evaluate_expression(row, operation.column, row_index=row_index))
+                args.append(
+                    self.evaluate_expression(row, operation.column, row_index=row_index)
+                )
             try:
                 return udf_func(*args)
             except Exception:
@@ -3723,7 +3725,9 @@ class ExpressionEvaluator:
         if value is None:
             return None
         unit = str(operation.value).lower() if operation.value else "day"
-        is_date_only = isinstance(value, dt_module.date) and not isinstance(value, dt_module.datetime)
+        is_date_only = isinstance(value, dt_module.date) and not isinstance(
+            value, dt_module.datetime
+        )
         dt = self._parse_datetime(value)
         if dt is None:
             return None
@@ -3731,7 +3735,9 @@ class ExpressionEvaluator:
         if isinstance(dt, dt_module.date) and not isinstance(dt, dt_module.datetime):
             dt = dt_module.datetime(dt.year, dt.month, dt.day)
         if unit in ("year", "yyyy", "yy"):
-            result = dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            result = dt.replace(
+                month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+            )
         elif unit in ("month", "mon", "mm"):
             result = dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         elif unit in ("day", "dd"):

@@ -502,12 +502,10 @@ class LazyEvaluationEngine:
                     if normalized_col is not expr.column:
                         new_expr.column = normalized_col
                         # Regenerate the operation name with the normalized column
-                        new_expr.name = (
-                            ColumnOperation._generate_name_early_helper(
-                                normalized_col,
-                                expr.operation,
-                                expr.value,
-                            )
+                        new_expr.name = ColumnOperation._generate_name_early_helper(
+                            normalized_col,
+                            expr.operation,
+                            expr.value,
                         )
                         new_expr._name = new_expr.name
                         changed = True
@@ -522,9 +520,7 @@ class LazyEvaluationEngine:
                 # Normalize left/right for binary operations
                 for attr in ("left", "right"):
                     if hasattr(expr, attr) and getattr(expr, attr) is not None:
-                        normalized = normalize_expression(
-                            getattr(expr, attr), cols
-                        )
+                        normalized = normalize_expression(getattr(expr, attr), cols)
                         if normalized is not getattr(expr, attr):
                             setattr(new_expr, attr, normalized)
                             changed = True
@@ -590,19 +586,13 @@ class LazyEvaluationEngine:
                     elif hasattr(col, "_alias"):
                         result_cols.append(col._alias)
                     else:
-                        result_cols.append(
-                            getattr(col, "name", str(col))
-                        )
-                if "*" in [
-                    c for c in new_cols if isinstance(c, str)
-                ]:
+                        result_cols.append(getattr(col, "name", str(col)))
+                if "*" in [c for c in new_cols if isinstance(c, str)]:
                     pass  # Keep current_cols
                 else:
                     current_cols = result_cols
             elif op_name == "filter":
-                normalized.append(
-                    (op_name, normalize_expression(op_val, current_cols))
-                )
+                normalized.append((op_name, normalize_expression(op_val, current_cols)))
             elif op_name == "orderBy":
                 cols_list, ascending = op_val
                 new_order_cols = []
@@ -617,9 +607,7 @@ class LazyEvaluationEngine:
                             Column(resolved) if resolved != col.name else col
                         )
                     else:
-                        new_order_cols.append(
-                            normalize_expression(col, current_cols)
-                        )
+                        new_order_cols.append(normalize_expression(col, current_cols))
                 normalized.append((op_name, (new_order_cols, ascending)))
             elif op_name == "drop":
                 if isinstance(op_val, str):
@@ -1332,12 +1320,17 @@ class LazyEvaluationEngine:
                 # Preserve StructType from explicit schema when inference returns MapType
                 # (dicts are used for both maps and structs; the explicit schema is authoritative)
                 from ..spark_types import StructType as ST, MapType as MT
-                if hasattr(df, '_schema') and hasattr(df._schema, 'fields'):
+
+                if hasattr(df, "_schema") and hasattr(df._schema, "fields"):
                     explicit_field_map = {f.name: f for f in df._schema.fields}
                     patched_fields = []
                     for f in base_schema.fields:
                         ef = explicit_field_map.get(f.name)
-                        if ef is not None and isinstance(f.dataType, MT) and isinstance(ef.dataType, ST):
+                        if (
+                            ef is not None
+                            and isinstance(f.dataType, MT)
+                            and isinstance(ef.dataType, ST)
+                        ):
                             patched_fields.append(ef)
                         else:
                             patched_fields.append(f)
@@ -1503,24 +1496,31 @@ class LazyEvaluationEngine:
                                     new_row = row.copy()
                                     new_row[col_name] = None
                                     new_data.append(new_row)
-                        elif (
-                            isinstance(col, ColumnOperation)
-                            and LazyEvaluationEngine._has_window_function(col)
-                        ):
+                        elif isinstance(
+                            col, ColumnOperation
+                        ) and LazyEvaluationEngine._has_window_function(col):
                             # ColumnOperation with arithmetic on WindowFunction
-                            wf_list = LazyEvaluationEngine._collect_window_functions(col)
+                            wf_list = LazyEvaluationEngine._collect_window_functions(
+                                col
+                            )
                             wf_results_map_wc: Dict[int, Sequence[Any]] = {}
                             for wf in wf_list:
                                 try:
                                     wf_raw = wf.evaluate(current.data)
                                     if wf_raw is None:
-                                        wf_results_map_wc[id(wf)] = [None] * len(current.data)
+                                        wf_results_map_wc[id(wf)] = [None] * len(
+                                            current.data
+                                        )
                                     elif isinstance(wf_raw, Sequence):
                                         wf_results_map_wc[id(wf)] = wf_raw
                                     else:
-                                        wf_results_map_wc[id(wf)] = cast("Sequence[Any]", wf_raw)
+                                        wf_results_map_wc[id(wf)] = cast(
+                                            "Sequence[Any]", wf_raw
+                                        )
                                 except _EVALUATION_FAILURE_EXCEPTIONS:
-                                    wf_results_map_wc[id(wf)] = [None] * len(current.data)
+                                    wf_results_map_wc[id(wf)] = [None] * len(
+                                        current.data
+                                    )
 
                             new_data = []
                             for row_index, row in enumerate(current.data):
@@ -1532,13 +1532,16 @@ class LazyEvaluationEngine:
                                         wf_row_values[id(wf)] = seq[row_index]
                                     else:
                                         wf_row_values[id(wf)] = None
-                                resolved_expr = LazyEvaluationEngine._resolve_window_in_expr(
-                                    col, wf_row_values
+                                resolved_expr = (
+                                    LazyEvaluationEngine._resolve_window_in_expr(
+                                        col, wf_row_values
+                                    )
                                 )
                                 try:
                                     from ..core.condition_evaluator import (
                                         ConditionEvaluator as WCCondEval,
                                     )
+
                                     result = WCCondEval.evaluate_expression(
                                         row, resolved_expr
                                     )
@@ -1636,17 +1639,31 @@ class LazyEvaluationEngine:
                                 field = current.schema._field_map.get(col.name)
                             if field is not None:
                                 new_fields.append(field)
-                            elif hasattr(col, "_original_column") and col._original_column is not None:
+                            elif (
+                                hasattr(col, "_original_column")
+                                and col._original_column is not None
+                            ):
                                 # Aliased column: look up original column type, use alias name
                                 orig_name = col._original_column.name
                                 orig_field = None
                                 if hasattr(current.schema, "_field_map"):
-                                    orig_field = current.schema._field_map.get(orig_name)
+                                    orig_field = current.schema._field_map.get(
+                                        orig_name
+                                    )
                                 if orig_field is not None:
-                                    new_fields.append(StructField(col.name, orig_field.dataType, orig_field.nullable))
+                                    new_fields.append(
+                                        StructField(
+                                            col.name,
+                                            orig_field.dataType,
+                                            orig_field.nullable,
+                                        )
+                                    )
                                 else:
                                     from ..spark_types import StringType
-                                    new_fields.append(StructField(col.name, StringType(), True))
+
+                                    new_fields.append(
+                                        StructField(col.name, StringType(), True)
+                                    )
                         elif isinstance(col, ColumnOperation):
                             # Check if this is a ColumnOperation wrapping a WindowFunction (e.g., WindowFunction.cast())
                             from ..functions.window_execution import WindowFunction
@@ -1793,20 +1810,30 @@ class LazyEvaluationEngine:
                                 not is_window_function_cast
                                 and LazyEvaluationEngine._has_window_function(col)
                             ):
-                                col_name = getattr(col, "_alias_name", None) or getattr(col, "name", "result")
-                                wf_list = LazyEvaluationEngine._collect_window_functions(col)
+                                col_name = getattr(col, "_alias_name", None) or getattr(
+                                    col, "name", "result"
+                                )
+                                wf_list = (
+                                    LazyEvaluationEngine._collect_window_functions(col)
+                                )
                                 wf_results_map: Dict[int, Sequence[Any]] = {}
                                 for wf in wf_list:
                                     try:
                                         wf_raw = wf.evaluate(current.data)
                                         if wf_raw is None:
-                                            wf_results_map[id(wf)] = [None] * len(current.data)
+                                            wf_results_map[id(wf)] = [None] * len(
+                                                current.data
+                                            )
                                         elif isinstance(wf_raw, Sequence):
                                             wf_results_map[id(wf)] = wf_raw
                                         else:
-                                            wf_results_map[id(wf)] = cast("Sequence[Any]", wf_raw)
+                                            wf_results_map[id(wf)] = cast(
+                                                "Sequence[Any]", wf_raw
+                                            )
                                     except _EVALUATION_FAILURE_EXCEPTIONS:
-                                        wf_results_map[id(wf)] = [None] * len(current.data)
+                                        wf_results_map[id(wf)] = [None] * len(
+                                            current.data
+                                        )
 
                                 if not hasattr(current, "_window_arithmetic_ops"):
                                     setattr(current, "_window_arithmetic_ops", {})
@@ -1823,6 +1850,7 @@ class LazyEvaluationEngine:
                                 json_tuple_fields = col.value if col.value else ()
                                 num_fields = len(json_tuple_fields)
                                 from ..spark_types import StringType as JTStringType
+
                                 for jt_idx in range(num_fields):
                                     new_fields.append(
                                         StructField(f"c{jt_idx}", JTStringType(), True)
@@ -1830,13 +1858,19 @@ class LazyEvaluationEngine:
                                 # Track this as a json_tuple expansion for the data phase
                                 if not hasattr(current, "_json_tuple_expansions"):
                                     setattr(current, "_json_tuple_expansions", {})
-                                jt_expansions = getattr(current, "_json_tuple_expansions", {})
+                                jt_expansions = getattr(
+                                    current, "_json_tuple_expansions", {}
+                                )
                                 jt_expansions[_col_idx] = (col, num_fields)
-                                setattr(current, "_json_tuple_expansions", jt_expansions)
+                                setattr(
+                                    current, "_json_tuple_expansions", jt_expansions
+                                )
                                 continue
 
                             # Column operation - need to evaluate
-                            col_name = getattr(col, "_alias_name", None) or getattr(col, "name", "result")
+                            col_name = getattr(col, "_alias_name", None) or getattr(
+                                col, "name", "result"
+                            )
 
                             # Handle transform operations specially
                             if col.operation == "transform":
@@ -2002,7 +2036,10 @@ class LazyEvaluationEngine:
                                 )
                                 # For aliased columns, look up using the original column name
                                 lookup_name = col.name
-                                if hasattr(col, "_original_column") and col._original_column is not None:
+                                if (
+                                    hasattr(col, "_original_column")
+                                    and col._original_column is not None
+                                ):
                                     lookup_name = col._original_column.name
                                 if lookup_name in row:
                                     new_row[field_name] = row[lookup_name]
@@ -2061,13 +2098,16 @@ class LazyEvaluationEngine:
                                             wf_row_values[id(wf)] = seq[row_index]
                                         else:
                                             wf_row_values[id(wf)] = None
-                                    resolved_expr = LazyEvaluationEngine._resolve_window_in_expr(
-                                        orig_col, wf_row_values
+                                    resolved_expr = (
+                                        LazyEvaluationEngine._resolve_window_in_expr(
+                                            orig_col, wf_row_values
+                                        )
                                     )
                                     try:
                                         from ..core.condition_evaluator import (
                                             ConditionEvaluator as WACEval,
                                         )
+
                                         result = WACEval.evaluate_expression(
                                             row, resolved_expr
                                         )
@@ -2077,20 +2117,27 @@ class LazyEvaluationEngine:
                                     continue
 
                                 # Handle json_tuple: expand into multiple columns
-                                if col.operation == "json_tuple" and i in _jt_expansions:
+                                if (
+                                    col.operation == "json_tuple"
+                                    and i in _jt_expansions
+                                ):
                                     jt_col_op, jt_num = _jt_expansions[i]
                                     try:
                                         from ..core.condition_evaluator import (
                                             ConditionEvaluator as JTEval,
                                         )
-                                        jt_result = JTEval.evaluate_expression(row, jt_col_op)
+
+                                        jt_result = JTEval.evaluate_expression(
+                                            row, jt_col_op
+                                        )
                                         if isinstance(jt_result, (list, tuple)):
                                             for jt_k in range(jt_num):
                                                 fi = _field_offset_map[i] + jt_k
                                                 if fi < len(new_fields):
                                                     new_row[new_fields[fi].name] = (
                                                         str(jt_result[jt_k])
-                                                        if jt_k < len(jt_result) and jt_result[jt_k] is not None
+                                                        if jt_k < len(jt_result)
+                                                        and jt_result[jt_k] is not None
                                                         else None
                                                     )
                                         else:
@@ -2142,14 +2189,18 @@ class LazyEvaluationEngine:
                                                     row, col.column
                                                 )
                                             )
-                                        elif hasattr(col, "column") and hasattr(
-                                            col.column, "value"
-                                        ) and not hasattr(col.column, "operation"):
+                                        elif (
+                                            hasattr(col, "column")
+                                            and hasattr(col.column, "value")
+                                            and not hasattr(col.column, "operation")
+                                        ):
                                             # Literal value (e.g., F.lit(123).cast("string"))
                                             source_value = col.column.value
-                                        elif hasattr(col, "column") and hasattr(
-                                            col.column, "evaluate"
-                                        ) and hasattr(col.column, "conditions"):
+                                        elif (
+                                            hasattr(col, "column")
+                                            and hasattr(col.column, "evaluate")
+                                            and hasattr(col.column, "conditions")
+                                        ):
                                             # CaseWhen expression (e.g., F.when(...).otherwise(...).cast())
                                             source_value = col.column.evaluate(row)
                                         elif hasattr(col, "column") and hasattr(
@@ -2236,19 +2287,25 @@ class LazyEvaluationEngine:
                                             elif cast_type.lower() == "date":
                                                 if i < len(new_fields):
                                                     if source_value is not None:
-                                                        from datetime import date as date_type
+                                                        from datetime import (
+                                                            date as date_type,
+                                                        )
 
                                                         try:
                                                             # Parse date string (YYYY-MM-DD)
-                                                            new_row[new_fields[i].name] = (
-                                                                date_type.fromisoformat(
-                                                                    str(source_value)[:10]
-                                                                )
+                                                            new_row[
+                                                                new_fields[i].name
+                                                            ] = date_type.fromisoformat(
+                                                                str(source_value)[:10]
                                                             )
                                                         except (ValueError, TypeError):
-                                                            new_row[new_fields[i].name] = None
+                                                            new_row[
+                                                                new_fields[i].name
+                                                            ] = None
                                                     else:
-                                                        new_row[new_fields[i].name] = None
+                                                        new_row[new_fields[i].name] = (
+                                                            None
+                                                        )
                                             else:
                                                 if i < len(new_fields):
                                                     new_row[new_fields[i].name] = (
@@ -2345,7 +2402,11 @@ class LazyEvaluationEngine:
                         if explode_col_indices:
                             explode_arrays = {}
                             for ei in explode_col_indices:
-                                field_name = new_fields[ei].name if ei < len(new_fields) else f"col_{ei}"
+                                field_name = (
+                                    new_fields[ei].name
+                                    if ei < len(new_fields)
+                                    else f"col_{ei}"
+                                )
                                 arr_val = new_row.get(field_name)
                                 if isinstance(arr_val, (list, tuple)):
                                     explode_arrays[field_name] = arr_val
@@ -2358,7 +2419,11 @@ class LazyEvaluationEngine:
                                 for row_i in range(num_rows):
                                     expanded_row = new_row.copy()
                                     for field_name, arr_val in explode_arrays.items():
-                                        expanded_row[field_name] = arr_val[row_i] if row_i < len(arr_val) else None
+                                        expanded_row[field_name] = (
+                                            arr_val[row_i]
+                                            if row_i < len(arr_val)
+                                            else None
+                                        )
                                     new_data.append(expanded_row)
                             else:
                                 new_data.append(new_row)
@@ -2475,13 +2540,23 @@ class LazyEvaluationEngine:
                                     lv = get_row_value(left_row_p, lk)
                                     rv = get_row_value(right_row_p, rk)
                                     # Type coercion for PySpark compatibility
-                                    if lv is not None and rv is not None and type(lv) != type(rv):
+                                    if (
+                                        lv is not None
+                                        and rv is not None
+                                        and not isinstance(lv, type(rv))
+                                    ):
                                         try:
-                                            if isinstance(lv, str) and isinstance(rv, (int, float)):
+                                            if isinstance(lv, str) and isinstance(
+                                                rv, (int, float)
+                                            ):
                                                 lv = type(rv)(lv)
-                                            elif isinstance(rv, str) and isinstance(lv, (int, float)):
+                                            elif isinstance(rv, str) and isinstance(
+                                                lv, (int, float)
+                                            ):
                                                 rv = type(lv)(rv)
-                                            elif isinstance(lv, (int, float)) and isinstance(rv, (int, float)):
+                                            elif isinstance(
+                                                lv, (int, float)
+                                            ) and isinstance(rv, (int, float)):
                                                 lv, rv = float(lv), float(rv)
                                         except (ValueError, TypeError):
                                             pass
@@ -2502,17 +2577,29 @@ class LazyEvaluationEngine:
                                     # For same-name join keys, preserve the value with the wider type
                                     # (numeric wins over string, matching PySpark behavior)
                                     for lk, rk in join_conditions:
-                                        if lk == rk and lk in left_row_p and rk in right_row_p:
+                                        if (
+                                            lk == rk
+                                            and lk in left_row_p
+                                            and rk in right_row_p
+                                        ):
                                             lval = left_row_p[lk]
                                             rval = right_row_p[rk]
                                             if lval is not None and rval is not None:
-                                                if isinstance(lval, (int, float)) and isinstance(rval, str):
+                                                if isinstance(
+                                                    lval, (int, float)
+                                                ) and isinstance(rval, str):
                                                     merged[lk] = lval
-                                                elif isinstance(lval, str) and isinstance(rval, (int, float)):
+                                                elif isinstance(
+                                                    lval, str
+                                                ) and isinstance(rval, (int, float)):
                                                     merged[lk] = rval
-                                                elif isinstance(lval, (int, float)) and isinstance(rval, (int, float)):
+                                                elif isinstance(
+                                                    lval, (int, float)
+                                                ) and isinstance(rval, (int, float)):
                                                     # Both numeric: use the wider type (float > int)
-                                                    if isinstance(lval, float) or isinstance(rval, float):
+                                                    if isinstance(
+                                                        lval, float
+                                                    ) or isinstance(rval, float):
                                                         merged[lk] = float(lval)
                                                     else:
                                                         merged[lk] = lval
@@ -2533,14 +2620,19 @@ class LazyEvaluationEngine:
                             "full_outer",
                         ]:
                             # Build set of same-name join key columns to avoid overwriting with None
-                            _same_name_keys = {lk for lk, rk in join_conditions if lk == rk}
+                            _same_name_keys = {
+                                lk for lk, rk in join_conditions if lk == rk
+                            }
                             right_null = {
                                 (
                                     f"{right_alias}_{f.name}" if right_alias else f.name
                                 ): None
                                 for f in other_df.schema.fields
                                 if f is not None
-                                and (f"{right_alias}_{f.name}" if right_alias else f.name) not in _same_name_keys
+                                and (
+                                    f"{right_alias}_{f.name}" if right_alias else f.name
+                                )
+                                not in _same_name_keys
                             }
                             joined_data.append({**left_row_p, **right_null})
 
@@ -2552,7 +2644,9 @@ class LazyEvaluationEngine:
                         "full",
                         "full_outer",
                     ]:
-                        _same_name_keys_r = {lk for lk, rk in join_conditions if lk == rk}
+                        _same_name_keys_r = {
+                            lk for lk, rk in join_conditions if lk == rk
+                        }
                         for right_row in other_df.data:
                             right_row_p = _prefix_row(right_row, right_alias)
                             right_matched = False
@@ -2561,7 +2655,9 @@ class LazyEvaluationEngine:
                                 if use_compound_condition:
                                     combined = {**left_row_p, **right_row_p}
                                     right_matched = (
-                                        ConditionEvaluator.evaluate_condition(combined, on)
+                                        ConditionEvaluator.evaluate_condition(
+                                            combined, on
+                                        )
                                         is True
                                     )
                                 else:
@@ -2569,13 +2665,23 @@ class LazyEvaluationEngine:
                                     for lk, rk in join_conditions:
                                         lv = get_row_value(left_row_p, lk)
                                         rv = get_row_value(right_row_p, rk)
-                                        if lv is not None and rv is not None and type(lv) != type(rv):
+                                        if (
+                                            lv is not None
+                                            and rv is not None
+                                            and not isinstance(lv, type(rv))
+                                        ):
                                             try:
-                                                if isinstance(lv, str) and isinstance(rv, (int, float)):
+                                                if isinstance(lv, str) and isinstance(
+                                                    rv, (int, float)
+                                                ):
                                                     lv = type(rv)(lv)
-                                                elif isinstance(rv, str) and isinstance(lv, (int, float)):
+                                                elif isinstance(rv, str) and isinstance(
+                                                    lv, (int, float)
+                                                ):
                                                     rv = type(lv)(rv)
-                                                elif isinstance(lv, (int, float)) and isinstance(rv, (int, float)):
+                                                elif isinstance(
+                                                    lv, (int, float)
+                                                ) and isinstance(rv, (int, float)):
                                                     lv, rv = float(lv), float(rv)
                                             except (ValueError, TypeError):
                                                 pass
@@ -2588,11 +2694,18 @@ class LazyEvaluationEngine:
                             if not right_matched:
                                 left_null = {
                                     (
-                                        f"{left_alias}_{f.name}" if left_alias else f.name
+                                        f"{left_alias}_{f.name}"
+                                        if left_alias
+                                        else f.name
                                     ): None
                                     for f in current.schema.fields
                                     if f is not None
-                                    and (f"{left_alias}_{f.name}" if left_alias else f.name) not in _same_name_keys_r
+                                    and (
+                                        f"{left_alias}_{f.name}"
+                                        if left_alias
+                                        else f.name
+                                    )
+                                    not in _same_name_keys_r
                                 }
                                 joined_data.append({**left_null, **right_row_p})
 
@@ -2616,7 +2729,14 @@ class LazyEvaluationEngine:
                             for row in joined_data
                         ]
                     else:
-                        from ..spark_types import StructField, StructType, LongType, DoubleType, FloatType, IntegerType, StringType as SparkStringType
+                        from ..spark_types import (
+                            StructField,
+                            StructType,
+                            LongType,
+                            DoubleType,
+                            FloatType,
+                            IntegerType,
+                        )
 
                         # Build a map of same-name join key columns to determine wider type
                         _join_key_names = set()
@@ -2634,7 +2754,12 @@ class LazyEvaluationEngine:
 
                         def _wider_spark_type(left_dt: Any, right_dt: Any) -> Any:
                             """Return the wider of two Spark types (numeric wins over string)."""
-                            _numeric_types = (IntegerType, LongType, FloatType, DoubleType)
+                            _numeric_types = (
+                                IntegerType,
+                                LongType,
+                                FloatType,
+                                DoubleType,
+                            )
                             left_is_num = isinstance(left_dt, _numeric_types)
                             right_is_num = isinstance(right_dt, _numeric_types)
                             if left_is_num and not right_is_num:
@@ -2648,7 +2773,9 @@ class LazyEvaluationEngine:
                                 if isinstance(right_dt, (FloatType, DoubleType)):
                                     return right_dt
                                 # Long wins over Integer
-                                if isinstance(left_dt, LongType) or isinstance(right_dt, LongType):
+                                if isinstance(left_dt, LongType) or isinstance(
+                                    right_dt, LongType
+                                ):
                                     return LongType()
                                 return left_dt
                             return left_dt
@@ -2662,9 +2789,7 @@ class LazyEvaluationEngine:
                             # For same-name join keys, use the wider type
                             if name in _join_key_names and name in _right_type_lookup:
                                 dt = _wider_spark_type(dt, _right_type_lookup[name])
-                            merged_fields.append(
-                                StructField(name, dt, f.nullable)
-                            )
+                            merged_fields.append(StructField(name, dt, f.nullable))
                         for f in other_df.schema.fields:
                             if f is None:
                                 continue  # type: ignore[unreachable,unused-ignore]
@@ -2688,7 +2813,10 @@ class LazyEvaluationEngine:
                     other_df = op_val
                     # Materialize the other DataFrame if it has pending operations
                     # to ensure computed columns (e.g., create_map) are evaluated
-                    if hasattr(other_df, "_operations_queue") and other_df._operations_queue:
+                    if (
+                        hasattr(other_df, "_operations_queue")
+                        and other_df._operations_queue
+                    ):
                         other_df = LazyEvaluationEngine.materialize(other_df)
                     # Use SetOperations for union
                     from .operations.set_operations import SetOperations
@@ -2708,7 +2836,11 @@ class LazyEvaluationEngine:
                         import functools
 
                         # Unpack: op_val may be (columns_tuple, ascending) or just columns
-                        if isinstance(op_val, tuple) and len(op_val) == 2 and isinstance(op_val[1], bool):
+                        if (
+                            isinstance(op_val, tuple)
+                            and len(op_val) == 2
+                            and isinstance(op_val[1], bool)
+                        ):
                             columns_to_sort, default_ascending = op_val
                         else:
                             columns_to_sort, default_ascending = op_val, True
@@ -2724,16 +2856,14 @@ class LazyEvaluationEngine:
                             elif hasattr(col, "operation"):
                                 op_type = col.operation
                                 base = col.column
-                                col_name = base.name if hasattr(base, "name") else str(base)
-                                if op_type == "desc":
-                                    sort_specs.append((col_name, False, False))
-                                elif op_type == "desc_nulls_last":
+                                col_name = (
+                                    base.name if hasattr(base, "name") else str(base)
+                                )
+                                if op_type == "desc" or op_type == "desc_nulls_last":
                                     sort_specs.append((col_name, False, False))
                                 elif op_type == "desc_nulls_first":
                                     sort_specs.append((col_name, False, True))
-                                elif op_type == "asc":
-                                    sort_specs.append((col_name, True, False))
-                                elif op_type == "asc_nulls_last":
+                                elif op_type == "asc" or op_type == "asc_nulls_last":
                                     sort_specs.append((col_name, True, False))
                                 elif op_type == "asc_nulls_first":
                                     sort_specs.append((col_name, True, True))

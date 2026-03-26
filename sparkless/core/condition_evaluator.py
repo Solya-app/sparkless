@@ -609,8 +609,10 @@ class ConditionEvaluator:
             params = operation.value
             if isinstance(params, tuple) and len(params) >= 2:
                 matching, replace = str(params[0]), str(params[1])
-                table = str.maketrans(matching, replace[:len(matching)].ljust(len(matching), '\x00'))
-                return str(col_value).translate(table).replace('\x00', '')
+                table = str.maketrans(
+                    matching, replace[: len(matching)].ljust(len(matching), "\x00")
+                )
+                return str(col_value).translate(table).replace("\x00", "")
             return str(col_value)
 
         elif operation_type == "substring_index":
@@ -641,7 +643,11 @@ class ConditionEvaluator:
                 prev, dp[0] = dp[0], i
                 for j in range(1, n + 1):
                     temp = dp[j]
-                    dp[j] = prev if val1[i - 1] == val2[j - 1] else 1 + min(dp[j], dp[j - 1], prev)
+                    dp[j] = (
+                        prev
+                        if val1[i - 1] == val2[j - 1]
+                        else 1 + min(dp[j], dp[j - 1], prev)
+                    )
                     prev = temp
             return dp[n]
 
@@ -651,9 +657,26 @@ class ConditionEvaluator:
             s = str(col_value).upper()
             if not s:
                 return ""
-            codes = {"B": "1", "F": "1", "P": "1", "V": "1",
-                     "C": "2", "G": "2", "J": "2", "K": "2", "Q": "2", "S": "2", "X": "2", "Z": "2",
-                     "D": "3", "T": "3", "L": "4", "M": "5", "N": "5", "R": "6"}
+            codes = {
+                "B": "1",
+                "F": "1",
+                "P": "1",
+                "V": "1",
+                "C": "2",
+                "G": "2",
+                "J": "2",
+                "K": "2",
+                "Q": "2",
+                "S": "2",
+                "X": "2",
+                "Z": "2",
+                "D": "3",
+                "T": "3",
+                "L": "4",
+                "M": "5",
+                "N": "5",
+                "R": "6",
+            }
             result = s[0]
             prev = codes.get(s[0], "0")
             for c in s[1:]:
@@ -667,6 +690,7 @@ class ConditionEvaluator:
             if col_value is None:
                 return None
             import re as re_mod
+
             params = operation.value
             if isinstance(params, tuple) and len(params) >= 2:
                 pattern, idx = str(params[0]), int(params[1])
@@ -683,6 +707,7 @@ class ConditionEvaluator:
             if col_value is None:
                 return None
             import re as re_mod
+
             params = operation.value
             pattern = str(params) if not isinstance(params, tuple) else str(params[0])
             return re_mod.findall(pattern, str(col_value))
@@ -725,10 +750,18 @@ class ConditionEvaluator:
         elif operation_type == "array":
             # Collect values from multiple columns into an array
             array_result = []
-            if col_value is not None or (hasattr(operation, "column") and hasattr(operation.column, "name") and operation.column.name != "__array_empty_base__"):
+            if col_value is not None or (
+                hasattr(operation, "column")
+                and hasattr(operation.column, "name")
+                and operation.column.name != "__array_empty_base__"
+            ):
                 array_result.append(col_value)
             # Check for empty array case
-            if hasattr(operation, "column") and hasattr(operation.column, "name") and operation.column.name == "__array_empty_base__":
+            if (
+                hasattr(operation, "column")
+                and hasattr(operation.column, "name")
+                and operation.column.name == "__array_empty_base__"
+            ):
                 return []
             # Add remaining values from operation.value
             if hasattr(operation, "value") and operation.value is not None:
@@ -762,6 +795,7 @@ class ConditionEvaluator:
             if col_value is None:
                 return None
             from datetime import datetime, date
+
             unit = str(operation.value).lower() if operation.value else "day"
             dt = col_value
             if isinstance(dt, str):
@@ -774,7 +808,9 @@ class ConditionEvaluator:
             if not isinstance(dt, datetime):
                 return None
             if unit in ("year", "yyyy", "yy"):
-                return dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                return dt.replace(
+                    month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+                )
             elif unit in ("month", "mon", "mm"):
                 return dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             elif unit in ("day", "dd"):
@@ -791,6 +827,7 @@ class ConditionEvaluator:
             if col_value is None:
                 return None
             from datetime import datetime, date
+
             fmt = str(operation.value) if operation.value else "yyyy-MM-dd"
             dt = col_value
             if isinstance(dt, str):
@@ -803,7 +840,15 @@ class ConditionEvaluator:
             if not isinstance(dt, datetime):
                 return None
             # Convert Java-style format to Python strftime
-            py_fmt = fmt.replace("yyyy", "%Y").replace("yy", "%y").replace("MM", "%m").replace("dd", "%d").replace("HH", "%H").replace("mm", "%M").replace("ss", "%S")
+            py_fmt = (
+                fmt.replace("yyyy", "%Y")
+                .replace("yy", "%y")
+                .replace("MM", "%m")
+                .replace("dd", "%d")
+                .replace("HH", "%H")
+                .replace("mm", "%M")
+                .replace("ss", "%S")
+            )
             return dt.strftime(py_fmt)
 
         elif operation_type in ("lpad", "rpad"):
@@ -844,6 +889,7 @@ class ConditionEvaluator:
             if col_value is None:
                 return None
             import re as re_mod
+
             pattern = str(operation.value)
             if operation_type == "like":
                 # Convert SQL LIKE to regex
@@ -872,7 +918,11 @@ class ConditionEvaluator:
             SEED = 42
             vals = [col_value]
             if hasattr(operation, "value") and operation.value is not None:
-                extra = operation.value if isinstance(operation.value, (list, tuple)) else [operation.value]
+                extra = (
+                    operation.value
+                    if isinstance(operation.value, (list, tuple))
+                    else [operation.value]
+                )
                 for v in extra:
                     vals.append(ConditionEvaluator._get_column_value(row, v))
             # If all values are None, return the seed (PySpark behavior)
@@ -880,6 +930,7 @@ class ConditionEvaluator:
                 return SEED
             try:
                 import xxhash
+
                 h = xxhash.xxh64(seed=SEED)
                 for v in vals:
                     if v is None:
@@ -890,6 +941,7 @@ class ConditionEvaluator:
             except ImportError:
                 # Fallback if xxhash not installed
                 import hashlib
+
                 hash_input = "|".join(str(v) if v is not None else "null" for v in vals)
                 h_bytes = hashlib.sha256(hash_input.encode()).digest()
                 return int.from_bytes(h_bytes[:8], byteorder="big", signed=True)
@@ -898,6 +950,7 @@ class ConditionEvaluator:
             if col_value is None:
                 return None
             import json as json_lib
+
             path = str(operation.value) if operation.value else "$"
             try:
                 obj = json_lib.loads(str(col_value))
@@ -911,6 +964,7 @@ class ConditionEvaluator:
                     continue
                 # Handle array index like [0]
                 import re as re_mod
+
                 arr_match = re_mod.match(r"(\w*)\[(\d+)\]", part)
                 if arr_match:
                     key, idx = arr_match.group(1), int(arr_match.group(2))
@@ -934,14 +988,21 @@ class ConditionEvaluator:
             if col_value is None:
                 return None
             import json as json_lib
+
             try:
                 obj = json_lib.loads(str(col_value))
             except (json_lib.JSONDecodeError, TypeError):
                 return None
             # operation.value is a tuple of field names
-            fields = operation.value if isinstance(operation.value, (list, tuple)) else [operation.value]
+            fields = (
+                operation.value
+                if isinstance(operation.value, (list, tuple))
+                else [operation.value]
+            )
             if isinstance(obj, dict):
-                return tuple(str(obj.get(f)) if obj.get(f) is not None else None for f in fields)
+                return tuple(
+                    str(obj.get(f)) if obj.get(f) is not None else None for f in fields
+                )
             return None
 
         elif operation_type in ("getItem", "getField"):
@@ -979,7 +1040,11 @@ class ConditionEvaluator:
                 return col_value
             # Check remaining columns
             if hasattr(operation, "value") and operation.value is not None:
-                remaining = operation.value if isinstance(operation.value, (list, tuple)) else [operation.value]
+                remaining = (
+                    operation.value
+                    if isinstance(operation.value, (list, tuple))
+                    else [operation.value]
+                )
                 for col_ref in remaining:
                     val = ConditionEvaluator._get_column_value(row, col_ref)
                     if val is not None:
@@ -1264,7 +1329,9 @@ class ConditionEvaluator:
 
         # UDF operations - evaluate the UDF and return its boolean result
         if operation_type == "udf":
-            result = ConditionEvaluator._evaluate_function_operation_value(row, operation)
+            result = ConditionEvaluator._evaluate_function_operation_value(
+                row, operation
+            )
             return bool(result) if result is not None else False
 
         return False

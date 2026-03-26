@@ -74,7 +74,6 @@ class Functions:
         if active is not None:
             return active
 
-
         raise PySparkValueError(
             "No active SparkSession found. Call SparkSession.builder.getOrCreate() "
             "or pass a session explicitly."

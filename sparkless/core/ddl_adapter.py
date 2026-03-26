@@ -8,7 +8,7 @@ them to Sparkless's internal type system using pure Python parsing.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List
+from typing import List
 
 from ..spark_types import (
     ArrayType,
@@ -92,7 +92,9 @@ def _parse_single_field(field_str: str) -> StructField:
     # Split into name and type
     parts = field_str.split(None, 1)
     if len(parts) == 1:
-        return StructField(name=parts[0].strip("`"), dataType=StringType(), nullable=nullable)
+        return StructField(
+            name=parts[0].strip("`"), dataType=StringType(), nullable=nullable
+        )
 
     name = parts[0].strip("`")
     type_str = parts[1].strip()
@@ -129,7 +131,7 @@ def _parse_type(type_str: str) -> DataType:
                 depth -= 1
             elif c == "," and depth == 0:
                 key_type = _parse_type(inner[:i])
-                value_type = _parse_type(inner[i + 1:])
+                value_type = _parse_type(inner[i + 1 :])
                 return MapType(key_type, value_type)
         return MapType(StringType(), StringType())
 

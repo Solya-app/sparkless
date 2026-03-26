@@ -144,6 +144,7 @@ class SetOperations:
         # Issue #242: LongType + StringType -> StringType
         # MapType and ArrayType are compatible if they share the same base type
         from ...spark_types import MapType, ArrayType
+
         if isinstance(type1, (MapType, ArrayType)) and type(type1) is type(type2):
             return True
 

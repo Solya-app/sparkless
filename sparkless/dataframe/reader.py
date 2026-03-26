@@ -321,7 +321,11 @@ class DataFrameReader:
             pdf = pd.read_parquet(str(Path(p).resolve()))
             all_rows.extend(pdf.to_dict(orient="records"))
 
-        schema = SchemaInferenceEngine.infer_from_data(all_rows) if all_rows else StructType([])
+        schema = (
+            SchemaInferenceEngine.infer_from_data(all_rows)
+            if all_rows
+            else StructType([])
+        )
         return schema, all_rows
 
     def _read_csv(
@@ -350,7 +354,11 @@ class DataFrameReader:
             )
             all_rows.extend(pdf.to_dict(orient="records"))
 
-        schema = SchemaInferenceEngine.infer_from_data(all_rows) if all_rows else StructType([])
+        schema = (
+            SchemaInferenceEngine.infer_from_data(all_rows)
+            if all_rows
+            else StructType([])
+        )
         return schema, all_rows
 
     def _read_json(
@@ -381,7 +389,11 @@ class DataFrameReader:
                     else:
                         all_rows.append(data)
 
-        schema = SchemaInferenceEngine.infer_from_data(all_rows) if all_rows else StructType([])
+        schema = (
+            SchemaInferenceEngine.infer_from_data(all_rows)
+            if all_rows
+            else StructType([])
+        )
         return schema, all_rows
 
     def _read_text(self, paths: List[str]) -> Tuple[StructType, List[Dict[str, Any]]]:

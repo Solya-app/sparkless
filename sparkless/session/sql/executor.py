@@ -2126,9 +2126,7 @@ class SQLExecutor:
                 if not meta:
                     from ...errors import AnalysisException
 
-                    raise AnalysisException(
-                        f"Table or view '{table_name}' not found."
-                    )
+                    raise AnalysisException(f"Table or view '{table_name}' not found.")
 
                 if meta.get("format") != "delta":
                     from ...errors import AnalysisException

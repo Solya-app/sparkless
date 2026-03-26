@@ -56,7 +56,7 @@ from .sql import (  # noqa: E402
     F,
     Functions,
 )
-from .spark_types import Row  # noqa: E402
+from .spark_types import Row  # noqa: E402, F401
 from .window import Window, WindowSpec  # noqa: E402
 from .session.context import SparkContext, JVMContext  # noqa: E402
 from . import compat  # noqa: E402
@@ -225,4 +225,3 @@ from . import sql  # noqa: E402
 
 # Register sql module in sys.modules
 sys.modules["sparkless.sql"] = sql
-
