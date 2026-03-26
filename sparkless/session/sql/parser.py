@@ -317,6 +317,8 @@ class SQLParser:
             return "REFRESH"
         elif query_upper.startswith("USE"):
             return "USE"
+        elif query_upper.startswith("VACUUM"):
+            return "VACUUM"
         else:
             return "UNKNOWN"
 

@@ -16,5 +16,4 @@ try:
 except PackageNotFoundError:
     # Fallback to hardcoded version if package not installed
     # This should match pyproject.toml
-
     __version__ = "5.0.0"
