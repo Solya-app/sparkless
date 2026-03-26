@@ -1,3 +1,10 @@
+# [4.2.0](https://github.com/Solya-app/sparkless/compare/v4.1.1...v4.2.0) (2026-03-26)
+
+
+### Features
+
+* **sql:** add VACUUM SQL command support ([#6](https://github.com/Solya-app/sparkless/issues/6)) ([0b775a4](https://github.com/Solya-app/sparkless/commit/0b775a4271d9f259adc424bdb8eeb85139c655cb))
+
 ## [4.1.1](https://github.com/Solya-app/sparkless/compare/v4.1.0...v4.1.1) (2026-03-26)
 
 
