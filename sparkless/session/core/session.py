@@ -315,7 +315,7 @@ class SparkSession:
 
         # Execute SQL via the Python SQL executor
         result = self._sql_executor.execute(query)
-        return cast("IDataFrame", result)
+        return result
 
     def _bind_parameters(
         self, query: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]

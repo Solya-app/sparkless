@@ -106,8 +106,8 @@ class ConditionEvaluator:
                     ):
                         # Check if we're in a cached DataFrame context
                         return None
-                    result: Any = left_value + right_value
-                    return cast("Optional[bool]", result)
+                    add_result: Any = left_value + right_value
+                    return cast("Optional[bool]", add_result)
                 elif operation_type == "-":
                     return cast("Optional[bool]", left_value - right_value)
                 elif operation_type == "*":
@@ -677,14 +677,15 @@ class ConditionEvaluator:
                 "N": "5",
                 "R": "6",
             }
-            result = s[0]
-            prev = codes.get(s[0], "0")
+            soundex_result: str = s[0]
+            prev_code: str = codes.get(s[0], "0")
             for c in s[1:]:
-                code = codes.get(c, "0")
-                if code != "0" and code != prev:
-                    result += code
-                prev = code if code != "0" else prev
-            return (result + "000")[:4]
+                cur_code: str = codes.get(c, "0")
+                if cur_code != "0" and cur_code != prev_code:
+                    soundex_result += cur_code
+                if cur_code != "0":
+                    prev_code = cur_code
+            return (soundex_result + "000")[:4]
 
         elif operation_type == "regexp_extract":
             if col_value is None:
@@ -803,10 +804,10 @@ class ConditionEvaluator:
                     dt = datetime.fromisoformat(dt.replace(" ", "T"))
                 except ValueError:
                     return None
-            if isinstance(dt, date) and not isinstance(dt, datetime):
-                dt = datetime(dt.year, dt.month, dt.day)
-            if not isinstance(dt, datetime):
-                return None
+            if isinstance(dt, date) and not isinstance(dt, datetime):  # type: ignore[unreachable]
+                dt = datetime(dt.year, dt.month, dt.day)  # type: ignore[unreachable]
+            if not isinstance(dt, datetime):  # type: ignore[unreachable]
+                return None  # type: ignore[unreachable]
             if unit in ("year", "yyyy", "yy"):
                 return dt.replace(
                     month=1, day=1, hour=0, minute=0, second=0, microsecond=0
@@ -835,10 +836,10 @@ class ConditionEvaluator:
                     dt = datetime.fromisoformat(dt.replace(" ", "T"))
                 except ValueError:
                     return None
-            if isinstance(dt, date) and not isinstance(dt, datetime):
-                dt = datetime(dt.year, dt.month, dt.day)
-            if not isinstance(dt, datetime):
-                return None
+            if isinstance(dt, date) and not isinstance(dt, datetime):  # type: ignore[unreachable]
+                dt = datetime(dt.year, dt.month, dt.day)  # type: ignore[unreachable]
+            if not isinstance(dt, datetime):  # type: ignore[unreachable]
+                return None  # type: ignore[unreachable]
             # Convert Java-style format to Python strftime
             py_fmt = (
                 fmt.replace("yyyy", "%Y")
@@ -1268,10 +1269,10 @@ class ConditionEvaluator:
         elif operation_type == "size":
             # size returns the length of an array or map
             if col_value is None:
-                return -1
+                return -1  # type: ignore[return-value]
             if isinstance(col_value, (list, tuple, dict)):
-                return len(col_value)
-            return -1
+                return len(col_value)  # type: ignore[return-value]
+            return -1  # type: ignore[return-value]
         elif operation_type == "transform":
             return cast(
                 "bool",
@@ -1298,8 +1299,8 @@ class ConditionEvaluator:
                     ):
                         # Check if we're in a cached DataFrame context
                         return None
-                    result: Any = left_value + right_value
-                    return cast("Optional[bool]", result)
+                    add_result: Any = left_value + right_value
+                    return cast("Optional[bool]", add_result)
                 elif operation_type == "-":
                     return cast("Optional[bool]", left_value - right_value)
                 elif operation_type == "*":

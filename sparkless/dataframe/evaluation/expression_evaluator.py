@@ -3733,7 +3733,7 @@ class ExpressionEvaluator:
             return None
         # Ensure we have a datetime (not date) for replace with time fields
         if isinstance(dt, dt_module.date) and not isinstance(dt, dt_module.datetime):
-            dt = dt_module.datetime(dt.year, dt.month, dt.day)
+            dt = dt_module.datetime(dt.year, dt.month, dt.day)  # type: ignore[unreachable]
         if unit in ("year", "yyyy", "yy"):
             result = dt.replace(
                 month=1, day=1, hour=0, minute=0, second=0, microsecond=0

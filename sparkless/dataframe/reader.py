@@ -321,8 +321,8 @@ class DataFrameReader:
             pdf = pd.read_parquet(str(Path(p).resolve()))
             all_rows.extend(pdf.to_dict(orient="records"))
 
-        schema = (
-            SchemaInferenceEngine.infer_from_data(all_rows)
+        schema: StructType = (
+            SchemaInferenceEngine.infer_from_data(all_rows)  # type: ignore[assignment]
             if all_rows
             else StructType([])
         )
@@ -354,8 +354,8 @@ class DataFrameReader:
             )
             all_rows.extend(pdf.to_dict(orient="records"))
 
-        schema = (
-            SchemaInferenceEngine.infer_from_data(all_rows)
+        schema: StructType = (
+            SchemaInferenceEngine.infer_from_data(all_rows)  # type: ignore[assignment]
             if all_rows
             else StructType([])
         )
@@ -389,8 +389,8 @@ class DataFrameReader:
                     else:
                         all_rows.append(data)
 
-        schema = (
-            SchemaInferenceEngine.infer_from_data(all_rows)
+        schema: StructType = (
+            SchemaInferenceEngine.infer_from_data(all_rows)  # type: ignore[assignment]
             if all_rows
             else StructType([])
         )

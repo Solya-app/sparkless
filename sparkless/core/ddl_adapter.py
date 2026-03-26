@@ -168,4 +168,5 @@ def _simple_type(type_name: str) -> DataType:
         "decimal": DecimalType,
     }
     type_class = type_mapping.get((type_name or "string").lower().strip(), StringType)
-    return type_class()
+    result: DataType = type_class()
+    return result

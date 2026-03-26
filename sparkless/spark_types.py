@@ -895,7 +895,7 @@ class Row:
         key_lower = key.lower()
         for actual_key in data_dict:
             if actual_key.lower() == key_lower:
-                return actual_key
+                return str(actual_key)
         raise KeyError(f"Key '{key}' not found in row")
 
     def __getitem__(self, key: Any) -> Any:

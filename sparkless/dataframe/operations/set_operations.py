@@ -275,9 +275,9 @@ class SetOperations:
         # Convert back to dict format
         result_data: List[Dict[str, Any]] = []
         for row in unioned_rows:  # type: ignore[assignment]
-            if isinstance(row, Row):
+            if isinstance(row, Row):  # type: ignore[unreachable]
                 # Use Row.asDict() method for proper conversion
-                row_dict: Dict[str, Any] = row.asDict()
+                row_dict: Dict[str, Any] = row.asDict()  # type: ignore[unreachable]
                 result_data.append(row_dict)
             elif hasattr(row, "data"):
                 # Row object - convert data to dict

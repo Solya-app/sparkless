@@ -504,7 +504,7 @@ class LazyEvaluationEngine:
                         # Regenerate the operation name with the normalized column
                         new_expr.name = ColumnOperation._generate_name_early_helper(
                             normalized_col,
-                            expr.operation,
+                            expr.operation,  # type: ignore[arg-type]
                             expr.value,
                         )
                         new_expr._name = new_expr.name
@@ -535,7 +535,7 @@ class LazyEvaluationEngine:
                             args_changed = True
                         new_args.append(normalized_arg)
                     if args_changed:
-                        new_expr.args = new_args
+                        new_expr.args = new_args  # type: ignore[attr-defined]
                         changed = True
 
                 # Normalize columns list (for function calls)
@@ -548,7 +548,7 @@ class LazyEvaluationEngine:
                             columns_changed = True
                         new_columns.append(normalized_c)
                     if columns_changed:
-                        new_expr.columns = new_columns
+                        new_expr.columns = new_columns  # type: ignore[attr-defined]
                         changed = True
 
                 return new_expr if changed else expr
@@ -604,10 +604,10 @@ class LazyEvaluationEngine:
                     ):
                         resolved = resolve_name(col.name, current_cols)
                         new_order_cols.append(
-                            Column(resolved) if resolved != col.name else col
+                            Column(resolved) if resolved != col.name else col  # type: ignore[arg-type]
                         )
                     else:
-                        new_order_cols.append(normalize_expression(col, current_cols))
+                        new_order_cols.append(normalize_expression(col, current_cols))  # type: ignore[arg-type]
                 normalized.append((op_name, (new_order_cols, ascending)))
             elif op_name == "drop":
                 if isinstance(op_val, str):
@@ -1125,7 +1125,10 @@ class LazyEvaluationEngine:
                     expr.value, wf_row_values
                 )
             resolved = ColumnOperation(
-                new_col, expr.operation, new_val, name=getattr(expr, "name", None)
+                new_col,
+                expr.operation,  # type: ignore[arg-type]
+                new_val,
+                name=getattr(expr, "name", None),  # type: ignore[arg-type]
             )
             return resolved
         return expr
@@ -2874,7 +2877,7 @@ class LazyEvaluationEngine:
                             else:
                                 sort_specs.append((str(col), default_ascending, False))
 
-                        def _compare_rows(a, b):
+                        def _compare_rows(a: Any, b: Any) -> int:
                             for col_name, ascending, nulls_first in sort_specs:
                                 va = get_row_value(a, col_name)
                                 vb = get_row_value(b, col_name)
