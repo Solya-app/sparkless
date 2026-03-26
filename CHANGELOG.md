@@ -1,3 +1,10 @@
+## [4.1.1](https://github.com/Solya-app/sparkless/compare/v4.1.0...v4.1.1) (2026-03-26)
+
+
+### Bug Fixes
+
+* **ci:** handle Azure Artifacts upload conflicts gracefully ([beab9f2](https://github.com/Solya-app/sparkless/commit/beab9f2d38e5635bb1abcfae181ba015f94b3a52))
+
 # [4.1.0](https://github.com/Solya-app/sparkless/compare/v4.0.0...v4.1.0) (2026-03-26)
 
 
