@@ -972,6 +972,20 @@ class ConditionEvaluator:
                     return str(col_value).split(delimiter)
             return str(col_value).split()
 
+        elif operation_type == "coalesce":
+            # Return the first non-null value from the column list
+            # operation.column is the first column, operation.value is a list of remaining columns
+            if col_value is not None:
+                return col_value
+            # Check remaining columns
+            if hasattr(operation, "value") and operation.value is not None:
+                remaining = operation.value if isinstance(operation.value, (list, tuple)) else [operation.value]
+                for col_ref in remaining:
+                    val = ConditionEvaluator._get_column_value(row, col_ref)
+                    if val is not None:
+                        return val
+            return None
+
         else:
             # For other functions, delegate to the existing function evaluation
             # operation_type is guaranteed to be a string in ColumnOperation
@@ -1078,6 +1092,18 @@ class ConditionEvaluator:
             return ConditionEvaluator._evaluate_like_operation(
                 col_value, operation.value
             )
+        elif operation_type in ("startswith", "startsWith"):
+            if col_value is None:
+                return None
+            return str(col_value).startswith(str(operation.value))
+        elif operation_type in ("endswith", "endsWith"):
+            if col_value is None:
+                return None
+            return str(col_value).endswith(str(operation.value))
+        elif operation_type == "contains":
+            if col_value is None:
+                return None
+            return str(operation.value) in str(col_value)
         elif operation_type == "isin":
             if operation.value is None:
                 return False
@@ -1090,6 +1116,11 @@ class ConditionEvaluator:
             return ConditionEvaluator._evaluate_between_operation(
                 col_value, operation.value
             )
+
+        # UDF operations (return value, evaluate as truthy/falsy in filter)
+        if operation_type == "udf":
+            result = ConditionEvaluator._evaluate_column_operation_value(row, operation)
+            return bool(result) if result is not None else False
 
         # Function operations (hash, math, string functions)
         if operation_type in [

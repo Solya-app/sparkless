@@ -454,13 +454,7 @@ class CaseWhen:
             # Handle create_map - delegate to ConditionEvaluator
             return ConditionEvaluator.evaluate_expression(row, operation)
         else:
-            # For other operations, try ConditionEvaluator first, then fallback to column value
-            try:
-                result = ConditionEvaluator.evaluate_expression(row, operation)
-                if result is not None:
-                    return result
-            except Exception:
-                pass
+            # For other operations, try to get the column value
             return ConditionEvaluator._get_column_value(row, operation.column)
 
 

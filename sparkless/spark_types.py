@@ -744,6 +744,7 @@ def get_row_value(row: Any, key: str, default: Any = None) -> Any:
 
     Supports case-insensitive fallback: if exact key is not found,
     tries case-insensitive matching against available keys.
+    Also supports dot-notation for nested struct access (e.g., "Person.Name").
     """
     if key in row:
         return row[key]
@@ -753,6 +754,23 @@ def get_row_value(row: Any, key: str, default: Any = None) -> Any:
         for actual_key in row:
             if actual_key.lower() == key_lower:
                 return row[actual_key]
+        # Dot-notation for nested struct access (e.g., "Person.Name")
+        if "." in key:
+            parts = key.split(".", 1)
+            parent_key = parts[0]
+            child_key = parts[1]
+            # Try exact match first, then case-insensitive
+            parent_val = None
+            if parent_key in row:
+                parent_val = row[parent_key]
+            else:
+                parent_lower = parent_key.lower()
+                for actual_key in row:
+                    if actual_key.lower() == parent_lower:
+                        parent_val = row[actual_key]
+                        break
+            if isinstance(parent_val, dict):
+                return get_row_value(parent_val, child_key, default)
     return default
 
 
