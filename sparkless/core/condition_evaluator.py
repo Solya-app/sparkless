@@ -2408,6 +2408,11 @@ class ConditionEvaluator:
             return False
 
         lower, upper = bounds
+        # Unwrap Literal objects
+        if hasattr(lower, "value") and not isinstance(lower, (Column, ColumnOperation)):
+            lower = lower.value
+        if hasattr(upper, "value") and not isinstance(upper, (Column, ColumnOperation)):
+            upper = upper.value
         return bool(lower <= col_value <= upper)
 
     @staticmethod
