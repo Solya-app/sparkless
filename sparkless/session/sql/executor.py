@@ -268,14 +268,14 @@ class SQLExecutor:
                                 df_renamed = cast(
                                     "DataFrame",
                                     df_renamed.withColumnRenamed(
-                                        c, f"{table1_alias}_{c}"
+                                        c, f"{table1_alias}.{c}"
                                     ),
                                 )
                         df2_renamed = df2
                         for c in df2.columns:
                             df2_renamed = cast(
                                 "DataFrame",
-                                df2_renamed.withColumnRenamed(c, f"{table2_alias}_{c}"),
+                                df2_renamed.withColumnRenamed(c, f"{table2_alias}.{c}"),
                             )
                         df_renamed = cast(
                             "DataFrame", df_renamed._materialize_if_lazy()
@@ -299,8 +299,8 @@ class SQLExecutor:
                                     case_sensitive_join,
                                 )
                                 if df1_join_col is None:
-                                    df1_join_col = f"{alias1}_{col1}"
-                                df2_join_col = f"{table2_alias}_{col2}"
+                                    df1_join_col = f"{alias1}.{col1}"
+                                df2_join_col = f"{table2_alias}.{col2}"
                                 if df1_join_col not in df_renamed.columns:
                                     raise ValueError(
                                         f"Join column '{df1_join_col}' not in left. "
@@ -973,7 +973,8 @@ class SQLExecutor:
                         col in select_col_names
                         or col in select_aliases
                         or any(
-                            col == s or col.endswith("_" + s) for s in select_col_names
+                            col == s or col.endswith("_" + s) or col.endswith("." + s)
+                            for s in select_col_names
                         )
                     )
                     # Keep select columns, group-by columns that are in SELECT, or aggregates
@@ -1247,7 +1248,7 @@ class SQLExecutor:
                                 if len(parts) == 2:
                                     table_alias, base_col = parts
                                     # Check if this column exists with the alias prefix (from join)
-                                    prefixed_col = f"{table_alias}_{base_col}"
+                                    prefixed_col = f"{table_alias}.{base_col}"
                                     if prefixed_col in available_columns:
                                         col_name = prefixed_col
                                     else:
@@ -1265,7 +1266,7 @@ class SQLExecutor:
                                             alias_matches: List[str] = [
                                                 c
                                                 for c in matching_cols
-                                                if c.startswith(f"{table_alias}_")
+                                                if c.startswith(f"{table_alias}.")
                                             ]
                                             if alias_matches:
                                                 col_name = alias_matches[0]
@@ -2928,14 +2929,14 @@ class SQLExecutor:
         # Add target columns with alias prefix
         if target_alias:
             for col, val in target_dict.items():
-                context[f"{target_alias}_{col}"] = val
+                context[f"{target_alias}.{col}"] = val
                 context[f"{target_alias}.{col}"] = val
         context.update(target_dict)
 
         # Add source columns with alias prefix
         if source_alias:
             for col, val in source_dict.items():
-                context[f"{source_alias}_{col}"] = val
+                context[f"{source_alias}.{col}"] = val
                 context[f"{source_alias}.{col}"] = val
         context.update(source_dict)
 

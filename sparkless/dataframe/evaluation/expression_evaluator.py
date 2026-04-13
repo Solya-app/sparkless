@@ -45,6 +45,49 @@ from ...spark_types import (
 from ...core.ddl_adapter import parse_ddl_schema
 
 
+def _coerce_for_comparison(left: Any, right: Any) -> tuple[Any, Any]:
+    """Coerce temporal types for comparison, matching PySpark's auto-cast behavior.
+
+    PySpark automatically casts between date, datetime, and string types in
+    comparisons. This helper normalizes both operands to a common type.
+    """
+    from datetime import date, datetime
+
+    # date vs datetime → promote date to datetime at midnight
+    if (
+        isinstance(left, date)
+        and not isinstance(left, datetime)
+        and isinstance(right, datetime)
+    ):
+        left = datetime(left.year, left.month, left.day)
+    elif (
+        isinstance(right, date)
+        and not isinstance(right, datetime)
+        and isinstance(left, datetime)
+    ):
+        right = datetime(right.year, right.month, right.day)
+
+    # string vs date/datetime → try parsing the string
+    if isinstance(left, str) and isinstance(right, (date, datetime)):
+        left = _parse_temporal_string(left)
+    elif isinstance(right, str) and isinstance(left, (date, datetime)):
+        right = _parse_temporal_string(right)
+
+    return left, right
+
+
+def _parse_temporal_string(s: str) -> Any:
+    """Parse a string to date or datetime, matching PySpark's parsing behavior."""
+    from datetime import datetime
+
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return s  # Return original if unparseable
+
+
 class ExpressionEvaluator:
     """Evaluates column expressions, operations, and function calls.
 
@@ -452,20 +495,28 @@ class ExpressionEvaluator:
         if left_value is None or right_value is None:
             return None
 
+        # Coerce temporal types for comparison (PySpark auto-casts between
+        # date, datetime, and string types)
+        left_value, right_value = _coerce_for_comparison(left_value, right_value)
+
         # Perform the comparison
-        if operation.operation == "==":
-            return left_value == right_value
-        elif operation.operation == "!=":
-            return left_value != right_value
-        elif operation.operation == "<":
-            return left_value < right_value
-        elif operation.operation == ">":
-            return left_value > right_value
-        elif operation.operation == "<=":
-            return left_value <= right_value
-        elif operation.operation == ">=":
-            return left_value >= right_value
-        else:
+        try:
+            if operation.operation == "==":
+                return left_value == right_value
+            elif operation.operation == "!=":
+                return left_value != right_value
+            elif operation.operation == "<":
+                return left_value < right_value
+            elif operation.operation == ">":
+                return left_value > right_value
+            elif operation.operation == "<=":
+                return left_value <= right_value
+            elif operation.operation == ">=":
+                return left_value >= right_value
+            else:
+                return None
+        except TypeError:
+            # Incompatible types that couldn't be coerced
             return None
 
     @profiled("expression.evaluate_function_call", category="expression")
