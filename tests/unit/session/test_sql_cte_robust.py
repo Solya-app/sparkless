@@ -9,9 +9,9 @@ def test_cte_with_join(spark) -> None:
     """CTE with JOIN: table-prefixed columns in SELECT resolve correctly.
 
     When a SELECT has a JOIN, columns are renamed with table alias prefix
-    (e.g. e_id, d_dept_name). The SELECT clause may reference them with
+    (e.g. e.id, d.dept_name). The SELECT clause may reference them with
     table prefix (e.id, d.dept_name). Resolution must use the joined
-    DataFrame's schema so these resolve to e_id, d_dept_name.
+    DataFrame's schema so these resolve to e.id, d.dept_name.
     """
     try:
         # Employees: id, name, dept_id
@@ -29,7 +29,7 @@ def test_cte_with_join(spark) -> None:
         departments.write.mode("overwrite").saveAsTable("departments")
 
         # SELECT with table-prefixed columns after JOIN; resolution must use
-        # join result schema (e_id, e_name, e_dept_id, d_id, d_dept_name).
+        # join result schema (e.id, e.name, e.dept_id, d.id, d.dept_name).
         result = spark.sql(
             "SELECT e.id, e.name, d.dept_name FROM employees e "
             "JOIN departments d ON e.dept_id = d.id"
@@ -39,11 +39,11 @@ def test_cte_with_join(spark) -> None:
         assert len(rows) == 3
 
         # Executor renames join columns with alias prefix; SELECT projects
-        # those, so result columns are e_id, e_name, d_dept_name (or id, name,
+        # those, so result columns are e.id, e.name, d.dept_name (or id, name,
         # dept_name if we alias; we don't alias here so prefixed names).
-        assert "e_id" in result.columns or "id" in result.columns
-        assert "e_name" in result.columns or "name" in result.columns
-        assert "d_dept_name" in result.columns or "dept_name" in result.columns
+        assert "e.id" in result.columns or "id" in result.columns
+        assert "e.name" in result.columns or "name" in result.columns
+        assert "d.dept_name" in result.columns or "dept_name" in result.columns
 
         # Check content: Alice and Carol in Engineering, Bob in Sales.
         # Use row[key] (PySpark-compatible); PySpark Row has no .get() method.
@@ -54,7 +54,7 @@ def test_cte_with_join(spark) -> None:
             return None
 
         by_name = {
-            _val(r, "e_name", "name"): _val(r, "d_dept_name", "dept_name") for r in rows
+            _val(r, "e.name", "name"): _val(r, "d.dept_name", "dept_name") for r in rows
         }
         assert by_name["Alice"] == "Engineering"
         assert by_name["Bob"] == "Sales"
@@ -103,9 +103,9 @@ def test_cte_with_multiple_joins(spark) -> None:
                     return r[k]
             return None
 
-        alice = [r for r in rows if _val(r, "e_name", "name") == "Alice"][0]
-        assert _val(alice, "d_dept_name", "dept_name") == "Engineering"
-        assert _val(alice, "p_project_name", "project_name") == "ProjectA"
+        alice = [r for r in rows if _val(r, "e.name", "name") == "Alice"][0]
+        assert _val(alice, "d.dept_name", "dept_name") == "Engineering"
+        assert _val(alice, "p.project_name", "project_name") == "ProjectA"
     finally:
         spark.sql("DROP TABLE IF EXISTS employees")
         spark.sql("DROP TABLE IF EXISTS departments")
@@ -141,8 +141,8 @@ def test_cte_with_left_join(spark) -> None:
                     return r[k]
             return None
 
-        bob = [r for r in rows if _val(r, "e_name", "name") == "Bob"][0]
-        assert _val(bob, "d_dept_name", "dept_name") is None
+        bob = [r for r in rows if _val(r, "e.name", "name") == "Bob"][0]
+        assert _val(bob, "d.dept_name", "dept_name") is None
     finally:
         spark.sql("DROP TABLE IF EXISTS employees")
         spark.sql("DROP TABLE IF EXISTS departments")
@@ -183,7 +183,7 @@ def test_cte_with_where_clause(spark) -> None:
                     return r[k]
             return None
 
-        names = [_val(r, "e_name", "name") for r in rows]
+        names = [_val(r, "e.name", "name") for r in rows]
         # At least Bob and Carol should be present (salary > 55000)
         assert "Bob" in names
         assert "Carol" in names
@@ -226,7 +226,7 @@ def test_cte_with_aggregation_after_join(spark) -> None:
             return None
 
         counts = {
-            _val(r, "d_dept_name", "dept_name"): _val(r, "emp_count") for r in rows
+            _val(r, "d.dept_name", "dept_name"): _val(r, "emp_count") for r in rows
         }
         assert counts["Engineering"] == 2
         assert counts["Sales"] == 2
@@ -262,7 +262,7 @@ def test_cte_with_self_join(spark) -> None:
             return None
 
         # At least one person has Alice as manager (Bob or Carol)
-        managed = [r for r in rows if _val(r, "manager", "m_name") == "Alice"]
+        managed = [r for r in rows if _val(r, "manager", "m.name") == "Alice"]
         assert len(managed) >= 1
     finally:
         spark.sql("DROP TABLE IF EXISTS employees")

@@ -2635,20 +2635,20 @@ class LazyEvaluationEngine:
                         if right_alias and right_col.startswith(f"{right_alias}."):
                             right_col = right_col[len(right_alias) + 1 :]
                         left_key = (
-                            f"{left_alias}_{left_col}" if left_alias else left_col
+                            f"{left_alias}.{left_col}" if left_alias else left_col
                         )
                         right_key = (
-                            f"{right_alias}_{right_col}" if right_alias else right_col
+                            f"{right_alias}.{right_col}" if right_alias else right_col
                         )
                         join_conditions.append((left_key, right_key))
                     elif isinstance(on, str):
-                        key = f"{left_alias}_{on}" if left_alias else on
-                        rkey = f"{right_alias}_{on}" if right_alias else on
+                        key = f"{left_alias}.{on}" if left_alias else on
+                        rkey = f"{right_alias}.{on}" if right_alias else on
                         join_conditions.append((key, rkey))
                     elif isinstance(on, (list, tuple)):
                         for col in on:
-                            key = f"{left_alias}_{col}" if left_alias else col
-                            rkey = f"{right_alias}_{col}" if right_alias else col
+                            key = f"{left_alias}.{col}" if left_alias else col
+                            rkey = f"{right_alias}.{col}" if right_alias else col
                             join_conditions.append((key, rkey))
                     elif hasattr(on, "operation") and on.operation not in ("==", "&"):
                         # Non-equality ColumnOperation (e.g. array_contains, custom conditions)
@@ -2656,8 +2656,8 @@ class LazyEvaluationEngine:
                         use_compound_condition = True
                     else:
                         col_name = on.name if hasattr(on, "name") else str(on)
-                        key = f"{left_alias}_{col_name}" if left_alias else col_name
-                        rkey = f"{right_alias}_{col_name}" if right_alias else col_name
+                        key = f"{left_alias}.{col_name}" if left_alias else col_name
+                        rkey = f"{right_alias}.{col_name}" if right_alias else col_name
                         join_conditions.append((key, rkey))
 
                     def _prefix_row(
@@ -2666,7 +2666,7 @@ class LazyEvaluationEngine:
                     ) -> Dict[str, Any]:
                         if not alias:
                             return dict(row)
-                        return {f"{alias}_{k}": v for k, v in row.items()}
+                        return {f"{alias}.{k}": v for k, v in row.items()}
 
                     # Perform the join
                     joined_data = []
@@ -2778,12 +2778,12 @@ class LazyEvaluationEngine:
                             }
                             right_null = {
                                 (
-                                    f"{right_alias}_{f.name}" if right_alias else f.name
+                                    f"{right_alias}.{f.name}" if right_alias else f.name
                                 ): None
                                 for f in other_df.schema.fields
                                 if f is not None
                                 and (
-                                    f"{right_alias}_{f.name}" if right_alias else f.name
+                                    f"{right_alias}.{f.name}" if right_alias else f.name
                                 )
                                 not in _same_name_keys
                             }
@@ -2847,14 +2847,14 @@ class LazyEvaluationEngine:
                             if not right_matched:
                                 left_null = {
                                     (
-                                        f"{left_alias}_{f.name}"
+                                        f"{left_alias}.{f.name}"
                                         if left_alias
                                         else f.name
                                     ): None
                                     for f in current.schema.fields
                                     if f is not None
                                     and (
-                                        f"{left_alias}_{f.name}"
+                                        f"{left_alias}.{f.name}"
                                         if left_alias
                                         else f.name
                                     )
@@ -2875,7 +2875,7 @@ class LazyEvaluationEngine:
                         left_col_names = {f.name for f in current.schema.fields}
                         if left_alias:
                             left_col_names = {
-                                f"{left_alias}_{n}" for n in left_col_names
+                                f"{left_alias}.{n}" for n in left_col_names
                             }
                         joined_data = [
                             {k: v for k, v in row.items() if k in left_col_names}
@@ -2902,7 +2902,7 @@ class LazyEvaluationEngine:
                         for f in other_df.schema.fields:
                             if f is None:
                                 continue
-                            rname = f"{right_alias}_{f.name}" if right_alias else f.name
+                            rname = f"{right_alias}.{f.name}" if right_alias else f.name
                             _right_type_lookup[rname] = f.dataType
 
                         def _wider_spark_type(left_dt: Any, right_dt: Any) -> Any:
@@ -2937,7 +2937,7 @@ class LazyEvaluationEngine:
                         for f in current.schema.fields:
                             if f is None:
                                 continue  # type: ignore[unreachable]
-                            name = f"{left_alias}_{f.name}" if left_alias else f.name
+                            name = f"{left_alias}.{f.name}" if left_alias else f.name
                             dt = f.dataType
                             # For same-name join keys, use the wider type
                             if name in _join_key_names and name in _right_type_lookup:
@@ -2946,7 +2946,7 @@ class LazyEvaluationEngine:
                         for f in other_df.schema.fields:
                             if f is None:
                                 continue  # type: ignore[unreachable,unused-ignore]
-                            name = f"{right_alias}_{f.name}" if right_alias else f.name
+                            name = f"{right_alias}.{f.name}" if right_alias else f.name
                             if not any(m.name == name for m in merged_fields):
                                 merged_fields.append(
                                     StructField(name, f.dataType, f.nullable)

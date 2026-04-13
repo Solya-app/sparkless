@@ -136,6 +136,15 @@ class ColumnValidator:
         if column_name == "*":
             return
 
+        # First check if the full name (including dots) exists as a literal column.
+        # This handles alias-prefixed columns like "e.salary" that are real column names
+        # after a JOIN, not struct field paths.
+        if (
+            ColumnValidator._find_column(schema, column_name, case_sensitive)
+            is not None
+        ):
+            return
+
         # Check if this is a struct field path (e.g., "StructVal.E1")
         if "." in column_name:
             parts = column_name.split(".", 1)
@@ -159,10 +168,10 @@ class ColumnValidator:
                 # (the field might be accessed dynamically or the struct might be dynamic)
                 # We'll let the actual execution handle this
                 return
+            return
 
-        if ColumnValidator._find_column(schema, column_name, case_sensitive) is None:
-            column_names = [field.name for field in schema.fields]
-            raise SparkColumnNotFoundError(column_name, column_names)
+        column_names = [field.name for field in schema.fields]
+        raise SparkColumnNotFoundError(column_name, column_names)
 
     @staticmethod
     def validate_columns_exist(

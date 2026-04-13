@@ -52,15 +52,15 @@ class TestIssue152SQLColumnAliases:
         assert len(rows) == 2
 
         # Verify column names are correct
-        # After JOIN, columns are prefixed with table alias (e.name -> e_name)
+        # After JOIN, columns are prefixed with table alias (e.name -> e.name)
         # But aliased columns use their alias (d.name as dept_name -> dept_name)
-        assert "e_name" in result.columns or "name" in result.columns
+        assert "e.name" in result.columns or "name" in result.columns
         assert "dept_name" in result.columns
 
         # Verify data is correct
         row_dicts = [row.asDict() for row in rows]
-        # Use the actual column name (e_name or name)
-        name_col = "e_name" if "e_name" in result.columns else "name"
+        # Use the actual column name (e.name or name)
+        name_col = "e.name" if "e.name" in result.columns else "name"
         assert any(
             row[name_col] == "Alice" and row["dept_name"] == "IT" for row in row_dicts
         )
@@ -93,12 +93,12 @@ class TestIssue152SQLColumnAliases:
         assert len(rows) == 2
 
         # Verify column names are correct
-        assert "e_name" in result.columns or "name" in result.columns
+        assert "e.name" in result.columns or "name" in result.columns
         assert "dept_name" in result.columns
 
         # Verify data (Bob should have NULL dept_name)
         row_dicts = [row.asDict() for row in rows]
-        name_col = "e_name" if "e_name" in result.columns else "name"
+        name_col = "e.name" if "e.name" in result.columns else "name"
         alice_row = next(row for row in row_dicts if row[name_col] == "Alice")
         assert alice_row["dept_name"] == "IT"
 

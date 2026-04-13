@@ -225,12 +225,12 @@ class TestIssue374JoinAliasedColumns:
             # Convert to dicts for easier assertion
             rows_dicts = [row.asDict() for row in rows]
             # Find matched row (id=1 should have city=NYC)
-            matched = [d for d in rows_dicts if d.get("l_id") == 1]
+            matched = [d for d in rows_dicts if d.get("l.id") == 1]
             assert len(matched) == 1
-            assert matched[0].get("r_city") == "NYC"
+            assert matched[0].get("r.city") == "NYC"
             # Find unmatched row (id=2 should have city=None)
-            unmatched = [d for d in rows_dicts if d.get("l_id") == 2]
+            unmatched = [d for d in rows_dicts if d.get("l.id") == 2]
             assert len(unmatched) == 1
-            assert unmatched[0].get("r_city") is None
+            assert unmatched[0].get("r.city") is None
         finally:
             spark.stop()

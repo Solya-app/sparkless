@@ -96,13 +96,13 @@ def test_robust_select_table_prefixed_after_join(spark):
     rows = result.collect()
     assert len(rows) == 2
     cols = _columns_set(result)
-    id_col = next((c for c in ("id", "t1_id", "t1.id") if c in cols), None)
-    label_col = next((c for c in ("label", "t2_label", "t2.label") if c in cols), None)
+    id_col = next((c for c in ("id", "t1.id") if c in cols), None)
+    label_col = next((c for c in ("label", "t2.label") if c in cols), None)
     assert id_col is not None
     assert label_col is not None
     # Content: (1,x) and (2,y)
-    ids = [_val(r, "id", "t1_id", "t1.id") for r in rows]
-    labels = [_val(r, "label", "t2_label", "t2.label") for r in rows]
+    ids = [_val(r, "id", "t1.id") for r in rows]
+    labels = [_val(r, "label", "t2.label") for r in rows]
     assert sorted(ids) == [1, 2]
     assert set(labels) == {"x", "y"}
 
@@ -146,7 +146,7 @@ def test_robust_self_join_manager_column_and_row_count(spark):
             return None
 
         by_employee = {
-            v(r, "employee", "e_name", "name"): v(r, "manager", "m_name") for r in rows
+            v(r, "employee", "e.name", "name"): v(r, "manager", "m.name") for r in rows
         }
         assert by_employee["Alice"] is None
         assert by_employee["Bob"] == "Alice"
@@ -182,7 +182,7 @@ def test_robust_join_compound_condition(spark):
     # Expect (2, 35, C1) and (3, 45, C2) — two rows
     assert len(rows) == 2
     # Backend may expose amount as "amount", "o_amount", or "o.amount"
-    amounts = [_val(r, "amount", "o_amount", "o.amount") for r in rows]
+    amounts = [_val(r, "amount", "o.amount") for r in rows]
     assert 35.0 in amounts
     assert 45.0 in amounts
 
@@ -215,7 +215,7 @@ def test_robust_sql_where_table_prefixed(spark):
         rows = result.collect()
         # Alice 50000 excluded; Bob 60000, Carol 70000 included
         assert len(rows) == 2
-        names = [_val(r, "name", "e_name") for r in rows]
+        names = [_val(r, "name", "e.name") for r in rows]
         assert "Bob" in names
         assert "Carol" in names
         assert "Alice" not in names
@@ -251,7 +251,7 @@ def test_robust_sql_group_by_table_prefixed(spark):
         )
         rows = result.collect()
         assert len(rows) == 2
-        counts = {_val(r, "dept_name", "d_dept_name"): _val(r, "cnt") for r in rows}
+        counts = {_val(r, "dept_name", "d.dept_name"): _val(r, "cnt") for r in rows}
         assert counts["Engineering"] == 2
         assert counts["Sales"] == 2
     finally:
@@ -293,11 +293,11 @@ def test_robust_sql_three_joins_select_third_table(spark):
 
         # Must have project_name (or p_project_name)
         cols = _columns_set(result)
-        assert "project_name" in cols or "p_project_name" in cols
+        assert "project_name" in cols or "p.project_name" in cols
 
-        name_col = "name" if "name" in cols else "e_name"
-        dept_col = "dept_name" if "dept_name" in cols else "d_dept_name"
-        proj_col = "project_name" if "project_name" in cols else "p_project_name"
+        name_col = "name" if "name" in cols else "e.name"
+        dept_col = "dept_name" if "dept_name" in cols else "d.dept_name"
+        proj_col = "project_name" if "project_name" in cols else "p.project_name"
 
         alice = next(r for r in rows if r[name_col] == "Alice")
         assert alice[dept_col] == "Engineering"

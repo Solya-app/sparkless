@@ -135,46 +135,39 @@ class ConditionHandler:
         """
         if hasattr(condition, "operation") and hasattr(condition, "column"):
             # Handle ColumnOperation conditions
-            if condition.operation == ">":
-                col_value = (
-                    get_row_value(row, condition.column.name)
-                    if hasattr(condition.column, "name")
-                    else get_row_value(row, str(condition.column))
+            col_value = (
+                get_row_value(row, condition.column.name)
+                if hasattr(condition.column, "name")
+                else get_row_value(row, str(condition.column))
+            )
+            if col_value is None:
+                return condition.operation == "==" and condition.value is None
+
+            # Coerce temporal types (PySpark auto-casts date/datetime/string)
+            from sparkless.dataframe.evaluation.expression_evaluator import (
+                _coerce_for_comparison,
+            )
+
+            try:
+                col_value, comp_value = _coerce_for_comparison(
+                    col_value, condition.value
                 )
-                return col_value is not None and col_value > condition.value
-            elif condition.operation == ">=":
-                col_value = (
-                    get_row_value(row, condition.column.name)
-                    if hasattr(condition.column, "name")
-                    else get_row_value(row, str(condition.column))
-                )
-                return col_value is not None and col_value >= condition.value
-            elif condition.operation == "<":
-                col_value = (
-                    get_row_value(row, condition.column.name)
-                    if hasattr(condition.column, "name")
-                    else get_row_value(row, str(condition.column))
-                )
-                return col_value is not None and col_value < condition.value
-            elif condition.operation == "<=":
-                col_value = (
-                    get_row_value(row, condition.column.name)
-                    if hasattr(condition.column, "name")
-                    else get_row_value(row, str(condition.column))
-                )
-                return col_value is not None and col_value <= condition.value
-            elif condition.operation == "==":
-                col_value = (
-                    get_row_value(row, condition.column.name)
-                    if hasattr(condition.column, "name")
-                    else get_row_value(row, str(condition.column))
-                )
-                return bool(col_value == condition.value)
-            elif condition.operation == "!=":
-                col_value = (
-                    get_row_value(row, condition.column.name)
-                    if hasattr(condition.column, "name")
-                    else get_row_value(row, str(condition.column))
-                )
-                return bool(col_value != condition.value)
+            except (TypeError, ValueError):
+                return False
+
+            try:
+                if condition.operation == ">":
+                    return bool(col_value > comp_value)
+                elif condition.operation == ">=":
+                    return bool(col_value >= comp_value)
+                elif condition.operation == "<":
+                    return bool(col_value < comp_value)
+                elif condition.operation == "<=":
+                    return bool(col_value <= comp_value)
+                elif condition.operation == "==":
+                    return bool(col_value == comp_value)
+                elif condition.operation == "!=":
+                    return bool(col_value != comp_value)
+            except TypeError:
+                return False
         return False
