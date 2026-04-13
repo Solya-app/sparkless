@@ -1,3 +1,12 @@
+## [4.2.1](https://github.com/Solya-app/sparkless/compare/v4.2.0...v4.2.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* remove duplicate version line from merge conflict in _version.py ([017bd48](https://github.com/Solya-app/sparkless/commit/017bd4812d506e0befc7e74c4e1d7fb4f5cf4501))
+* unwrap Literal objects in between() and comparison operations (v5.9.0) ([3f3758c](https://github.com/Solya-app/sparkless/commit/3f3758cd701ab6e058920b9387dddddda43ebcc6))
+* use dot notation for aliased column prefixes (PySpark compat) ([#15](https://github.com/Solya-app/sparkless/issues/15)) ([84eb332](https://github.com/Solya-app/sparkless/commit/84eb3329f7056af562b3fa988c14a705773bf89b))
+
 # [4.2.0](https://github.com/Solya-app/sparkless/compare/v4.1.1...v4.2.0) (2026-03-26)
 
 
